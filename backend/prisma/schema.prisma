@@ -23,7 +23,8 @@ model Docente {
   resetToken String?    @unique
   resetTokenExpiry DateTime?
   rol        Rol        @default(DOCENTE)
-  disponibilidad String?    // JSON string representation of teacher availability blocks
+  disponibilidad String?    // JSON string representation of teacher availability blocks (deprecated)
+  disponibilidades DisponibilidadDocente[]
   cursos     Curso[]    @relation("DocenteCursos")
 
   horarios   Horario[]
@@ -91,6 +92,7 @@ model Horario {
   horaFin    DateTime
   tipoCurso  TipoCurso
   grupo      String?
+  semestre   String     @default("2026-I")
 }
 
 enum Dia {
@@ -121,4 +123,17 @@ model Notificacion {
   docenteId Int?
   visto     Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+// =========================
+// Disponibilidades por Semestre
+// =========================
+model DisponibilidadDocente {
+  id         Int      @id @default(autoincrement())
+  docente    Docente  @relation(fields: [docenteId], references: [id], onDelete: Cascade)
+  docenteId  Int
+  semestre   String
+  bloques    String   // JSON stringified: '[{"dia":"Lunes","bloque":"07:00-08:00"}, ...]'
+
+  @@unique([docenteId, semestre])
 }

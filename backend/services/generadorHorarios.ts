@@ -29,11 +29,13 @@ function shuffleArray<T>(array: T[]): T[] {
   return arr;
 }
 
-export async function generarHorariosAutomaticamente() {
-  console.log('--- Iniciando Algoritmo de Generación Automática ---');
+export async function generarHorariosAutomaticamente(semestre: string) {
+  console.log(`--- Iniciando Algoritmo de Generación Automática para el Semestre ${semestre} ---`);
 
-  // 1. Limpiar horarios existentes para la demo (opcional, pero recomendado para frescura)
-  await prisma.horario.deleteMany({});
+  // 1. Limpiar horarios existentes únicamente para el semestre seleccionado
+  await prisma.horario.deleteMany({
+    where: { semestre }
+  });
 
   // 2. Obtener Docentes ordenados por categoría y antigüedad
   const docentes = await prisma.docente.findMany();
@@ -44,8 +46,19 @@ export async function generarHorariosAutomaticamente() {
     return b.antiguedad - a.antiguedad; // Mayor antigüedad primero
   });
 
-  // 3. Obtener Cursos y Aulas (Mezclados para generar diferentes patrones en cada sugerencia)
-  const cursosRaw = await prisma.curso.findMany();
+  // 3. Obtener Cursos y Aulas filtrados por los ciclos correspondientes al semestre
+  // Semestres I -> Ciclos Impares (1, 3, 5, 7, 9)
+  // Semestres II -> Ciclos Pares (2, 4, 6, 8, 10)
+  const isOddSemester = semestre.endsWith('-I') || semestre.endsWith(' I') || semestre === 'I' || semestre.endsWith('I');
+  const targetCiclos = isOddSemester ? [1, 3, 5, 7, 9] : [2, 4, 6, 8, 10];
+
+  const cursosRaw = await prisma.curso.findMany({
+    where: {
+      ciclo: {
+        in: targetCiclos
+      }
+    }
+  });
   const aulasRaw = await prisma.aula.findMany();
 
   const cursos = shuffleArray(cursosRaw);
@@ -58,24 +71,44 @@ export async function generarHorariosAutomaticamente() {
   const ocupacionAula: Record<string, Set<string>> = {}; // aulaId -> "Dia-Bloque"
   const ocupacionCiclo: Record<string, Set<string>> = {}; // ciclo -> "Dia-Bloque"
 
-  // 4. Asignar cursos a docentes (Simplificado: distribuimos equitativamente)
+  // 4. Asignar cursos a docentes (distribuimos equitativamente)
   let cursoIndex = 0;
   
   for (const docente of docentesOrdenados) {
-    // Asignamos 2-3 cursos por docente para este demo
+    // Asignamos 2 cursos por docente para este demo
     const maxCursos = 2;
     let cursosAsignados = 0;
 
-    // Obtener y parsear disponibilidad del docente
+    // Obtener y parsear disponibilidad del docente para el semestre seleccionado
     let disponibilidadSlots: { dia: string; bloque: string }[] = [];
-    if (docente.disponibilidad) {
+    
+    const dispRecord = await prisma.disponibilidadDocente.findUnique({
+      where: {
+        docenteId_semestre: {
+          docenteId: docente.id,
+          semestre: semestre
+        }
+      }
+    });
+
+    if (dispRecord?.bloques) {
+      try {
+        const parsed = JSON.parse(dispRecord.bloques);
+        if (Array.isArray(parsed)) {
+          disponibilidadSlots = parsed;
+        }
+      } catch (e) {
+        console.error(`Error al parsear disponibilidad del docente ${docente.nombre} para el semestre ${semestre}:`, e);
+      }
+    } else if (docente.disponibilidad) {
+      // Retrocompatibilidad: fallback a disponibilidad global si no ha registrado la del semestre
       try {
         const parsed = JSON.parse(docente.disponibilidad);
         if (Array.isArray(parsed)) {
           disponibilidadSlots = parsed;
         }
       } catch (e) {
-        console.error(`Error al parsear disponibilidad del docente ${docente.nombre}:`, e);
+        console.error(`Error al parsear disponibilidad global del docente ${docente.nombre}:`, e);
       }
     }
 
@@ -136,8 +169,9 @@ export async function generarHorariosAutomaticamente() {
                 dia: dia,
                 horaInicio,
                 horaFin,
-                tipoCurso: curso.tipo
-              }
+                tipoCurso: curso.tipo,
+                semestre: semestre
+              } as any
             });
 
             horariosGenerados.push(nuevoHorario);
@@ -163,9 +197,38 @@ export async function generarHorariosAutomaticamente() {
     }
   }
 
+  // Crear notificación para cada docente informando que el administrador ha generado los horarios (solo si tiene asignaciones)
+  try {
+    const docentesNotificar = await prisma.docente.findMany({
+      where: { rol: 'DOCENTE' }
+    });
+
+    for (const doc of docentesNotificar) {
+      const countHorarios = await prisma.horario.count({
+        where: {
+          docenteId: doc.id,
+          semestre: semestre
+        }
+      });
+
+      if (countHorarios > 0) {
+        await (prisma as any).notificacion.create({
+          data: {
+            titulo: 'Horarios Académicos Creados',
+            mensaje: `El administrador ha creado y publicado los horarios para el semestre académico ${semestre}. Ya puedes ingresar a visualizarlos.`,
+            docenteId: doc.id,
+            visto: false
+          }
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error al crear notificaciones para docentes:', error);
+  }
+
   return {
     success: true,
     count: horariosGenerados.length,
-    message: `Se han generado ${horariosGenerados.length} horarios respetando la jerarquía docente.`
+    message: `Se han generado ${horariosGenerados.length} horarios para el semestre ${semestre} respetando la jerarquía docente.`
   };
 }

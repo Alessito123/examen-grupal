@@ -135,34 +135,98 @@ export const docentesRouter = router({
   updateDisponibilidad: publicProcedure
     .input(z.object({
       id: z.number().int(),
-      disponibilidad: z.string()
+      disponibilidad: z.string(),
+      semestre: z.string()
     }))
     .mutation(async ({ input }) => {
-      const countHorarios = await prisma.horario.count();
+      const countHorarios = await prisma.horario.count({
+        where: { semestre: input.semestre }
+      });
       if (countHorarios > 0) {
-        throw new Error('No es posible modificar la disponibilidad una vez que se han programado los horarios oficiales.');
+        throw new Error(`No es posible modificar la disponibilidad para el semestre ${input.semestre} porque ya se han programado los horarios oficiales.`);
       }
 
-      const docente = await (prisma.docente as any).findUnique({
+      const docente = await prisma.docente.findUnique({
         where: { id: input.id }
       });
       const nombreDocente = docente?.nombre || 'Docente';
 
-      const updatedDocente = await (prisma.docente as any).update({
-        where: { id: input.id },
-        data: { disponibilidad: input.disponibilidad } as any
+      // Registrar o actualizar disponibilidad específica del semestre
+      const updatedDisp = await prisma.disponibilidadDocente.upsert({
+        where: {
+          docenteId_semestre: {
+            docenteId: input.id,
+            semestre: input.semestre
+          }
+        },
+        update: {
+          bloques: input.disponibilidad
+        },
+        create: {
+          docenteId: input.id,
+          semestre: input.semestre,
+          bloques: input.disponibilidad
+        }
       });
 
+      // Notificación premium sólo para ADMINISTRADORES
       await (prisma as any).notificacion.create({
         data: {
           titulo: 'Disponibilidad Actualizada',
-          mensaje: `El docente ${nombreDocente} ha registrado o modificado su disponibilidad horaria.`,
-          docenteId: input.id,
+          mensaje: `El docente ${nombreDocente} ha registrado o modificado su disponibilidad horaria para el semestre ${input.semestre}.`,
+          docenteId: null, // Omitido / null hace que solo el Administrador la vea en su buzón general
           visto: false
         }
       });
 
-      return updatedDocente;
+      return updatedDisp;
+    }),
+
+  getDisponibilidadBySemestre: publicProcedure
+    .input(z.object({
+      docenteId: z.number().int(),
+      semestre: z.string()
+    }))
+    .query(async ({ input }) => {
+      return prisma.disponibilidadDocente.findUnique({
+        where: {
+          docenteId_semestre: {
+            docenteId: input.docenteId,
+            semestre: input.semestre
+          }
+        }
+      });
+    }),
+
+  getDocentesConDisponibilidad: publicProcedure
+    .input(z.object({
+      semestre: z.string()
+    }))
+    .query(async ({ input }) => {
+      const docentes = await prisma.docente.findMany({
+        include: {
+          cursos: true,
+          disponibilidades: {
+            where: {
+              semestre: input.semestre
+            }
+          }
+        }
+      });
+
+      // Mapeamos a la estructura heredada para compatibilidad directa con el frontend
+      return docentes.map((docente: any) => {
+        const matchingDisp = docente.disponibilidades?.[0];
+        return {
+          ...docente,
+          disponibilidad: matchingDisp ? matchingDisp.bloques : docente.disponibilidad
+        };
+      }).sort((a: any, b: any) => {
+        const pA = ({ principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, contratado: 5 } as any)[a.categoria] || 99;
+        const pB = ({ principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, contratado: 5 } as any)[b.categoria] || 99;
+        if (pA !== pB) return pA - pB;
+        return b.antiguedad - a.antiguedad;
+      });
     }),
 
   delete: publicProcedure

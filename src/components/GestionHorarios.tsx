@@ -7,8 +7,23 @@ interface GestionHorariosProps {
   onSuccess: () => void;
 }
 
+const getSemestresDinamicos = (): string[] => {
+  const currentYear = new Date().getFullYear();
+  return [
+    `${currentYear - 1}-I`,
+    `${currentYear - 1}-II`,
+    `${currentYear}-I`,
+    `${currentYear}-II`,
+    `${currentYear + 1}-I`,
+    `${currentYear + 1}-II`,
+  ];
+};
+
+const SEMESTRES = getSemestresDinamicos();
+
 const GestionHorarios: React.FC<GestionHorariosProps> = ({ onSuccess }) => {
   const utils = trpc.useContext();
+  const [selectedSemestre, setSelectedSemestre] = useState(() => `${new Date().getFullYear()}-I`);
   const [isProcessing, setIsProcessing] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [showConfirm, setShowConfirm] = useState<{ type: 'generar' | 'limpiar'; title: string; description: string } | null>(null);
@@ -30,9 +45,12 @@ const GestionHorarios: React.FC<GestionHorariosProps> = ({ onSuccess }) => {
 
   const limpiarMutation = trpc.horarios.deleteAll.useMutation({
     onSuccess: () => {
-      setMessage({ text: 'Todos los horarios han sido eliminados.', type: 'success' });
+      setMessage({ text: `Todos los horarios del semestre ${selectedSemestre} han sido eliminados.`, type: 'success' });
       utils.horarios.getAll.invalidate();
       onSuccess();
+    },
+    onError: (error) => {
+      setMessage({ text: 'Error al eliminar horarios: ' + error.message, type: 'error' });
     },
     onSettled: () => {
       setIsProcessing(false);
@@ -44,27 +62,50 @@ const GestionHorarios: React.FC<GestionHorariosProps> = ({ onSuccess }) => {
     setShowConfirm({
       type: 'generar',
       title: '¿Generar Horarios Automáticamente?',
-      description: 'Esta acción borrará la programación actual y creará una nueva basada en la jerarquía docente. ¿Deseas continuar?'
+      description: `Esta acción borrará la programación actual del semestre ${selectedSemestre} y creará una nueva basada en la jerarquía docente. ¿Deseas continuar?`
     });
   };
 
   const handleLimpiar = () => {
     setShowConfirm({
       type: 'limpiar',
-      title: '¿Reiniciar Tablero de Horarios?',
-      description: 'Se eliminarán todos los horarios registrados. Esta acción es irreversible.'
+      title: `¿Reiniciar Horarios del Semestre ${selectedSemestre}?`,
+      description: `Se eliminarán todos los horarios registrados para el semestre ${selectedSemestre}. Esta acción es irreversible.`
     });
   };
 
   const confirmAction = () => {
     if (!showConfirm) return;
     setIsProcessing(true);
-    if (showConfirm.type === 'generar') generarMutation.mutate();
-    else limpiarMutation.mutate();
+    if (showConfirm.type === 'generar') {
+      generarMutation.mutate({ semestre: selectedSemestre });
+    } else {
+      limpiarMutation.mutate({ semestre: selectedSemestre });
+    }
   };
 
   return (
     <div className="space-y-6 relative">
+      {/* Selector de Semestre Académico */}
+      <div className="glass p-6 rounded-3xl border border-gray-200 dark:border-white/5 bg-white/50 dark:bg-white/[0.02] shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h4 className="text-lg font-bold text-slate-900 dark:text-white">Período de Planificación</h4>
+          <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">Selecciona el semestre sobre el cual deseas aplicar el algoritmo de IA o realizar una limpieza.</p>
+        </div>
+        <div className="flex items-center gap-2 bg-gray-100 dark:bg-white/5 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 w-full sm:w-auto">
+          <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">Semestre:</span>
+          <select
+            value={selectedSemestre}
+            onChange={(e) => setSelectedSemestre(e.target.value)}
+            className="bg-transparent border-none text-sm font-bold text-purple-600 dark:text-purple-400 focus:ring-0 cursor-pointer p-0 pr-8"
+          >
+            {SEMESTRES.map((s) => (
+              <option key={s} value={s}>{s} {s.endsWith('I') ? '(Impares)' : '(Pares)'}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Generar Automáticamente Card */}
         <motion.button

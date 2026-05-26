@@ -16,22 +16,41 @@ const getCicloRomano = (ciclo: number | null): string => {
 };
 
 const getSemestreByCiclo = (ciclo: number | null): string => {
-  if (!ciclo) return '2026-I';
-  return ciclo % 2 === 1 ? '2026-I' : '2026-II';
+  const currentYear = new Date().getFullYear();
+  if (!ciclo) return `${currentYear}-I`;
+  return ciclo % 2 === 1 ? `${currentYear}-I` : `${currentYear}-II`;
 };
+
+export const getSemestresDinamicos = (): string[] => {
+  const currentYear = new Date().getFullYear();
+  return [
+    `${currentYear - 1}-I`,
+    `${currentYear - 1}-II`,
+    `${currentYear}-I`,
+    `${currentYear}-II`,
+    `${currentYear + 1}-I`,
+    `${currentYear + 1}-II`,
+  ];
+};
+
+export const SEMESTRES = getSemestresDinamicos();
 
 const HorariosPage: React.FC = () => {
   const { user } = useAuth();
   const horariosQuery = trpc.horarios.getAll.useQuery();
-  const docentesQuery = trpc.docentes.getAll.useQuery(undefined, {
-    refetchInterval: 3000, // Refrescar automáticamente cada 3 segundos en segundo plano
-  });
+  const [semestre, setSemestre] = useState<string>('2026-I');
+  
+  const docentesQuery = trpc.docentes.getDocentesConDisponibilidad.useQuery(
+    { semestre: semestre || '2026-I' },
+    {
+      refetchInterval: 3000, // Refrescar automáticamente cada 3 segundos en segundo plano
+    }
+  );
   const aulasQuery = trpc.aulas.getAll.useQuery();
 
   const [docenteId, setDocenteId] = useState<string>('');
   const [aulaId, setAulaId] = useState<string>('');
   const [dia, setDia] = useState<string>('');
-  const [semestre, setSemestre] = useState<string>('');
   const [ciclo, setCiclo] = useState<string>('');
   const [view, setView] = useState<'consulta' | 'gestion' | 'disponibilidades'>('consulta');
   const [consultaViewType, setConsultaViewType] = useState<'lista' | 'calendario'>('lista');
@@ -266,8 +285,9 @@ const HorariosPage: React.FC = () => {
                     className="w-full bg-white dark:bg-black/20 border-gray-200 dark:border-white/10"
                   >
                     <option value="">Todos los semestres</option>
-                    <option value="2026-I">2026-I</option>
-                    <option value="2026-II">2026-II</option>
+                    {SEMESTRES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -281,9 +301,16 @@ const HorariosPage: React.FC = () => {
                     className="w-full bg-white dark:bg-black/20 border-gray-200 dark:border-white/10"
                   >
                     <option value="">Todos los ciclos</option>
-                    {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'].map(rom => (
-                      <option key={rom} value={rom}>{rom}</option>
-                    ))}
+                    {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
+                      .filter(rom => {
+                        if (!semestre) return true;
+                        const isOddSem = semestre.endsWith('I');
+                        const isOddCiclo = ['I', 'III', 'V', 'VII', 'IX'].includes(rom);
+                        return isOddSem ? isOddCiclo : !isOddCiclo;
+                      })
+                      .map(rom => (
+                        <option key={rom} value={rom}>{rom}</option>
+                      ))}
                   </select>
                 </div>
 
@@ -392,6 +419,7 @@ const HorariosPage: React.FC = () => {
         <ModalCrearHorario
           isOpen={isModalOpen}
           horarioToEdit={horarioToEdit}
+          defaultSemestre={semestre || '2026-I'}
           onClose={() => {
             setIsModalOpen(false);
             setHorarioToEdit(null);

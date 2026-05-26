@@ -42,10 +42,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const [activeToast, setActiveToast] = React.useState<{ id: number; titulo: string; mensaje: string } | null>(null);
 
   // Poll notifications every 4 seconds for a real-time feel
-  const notifQuery = trpc.notificaciones.getAll.useQuery(undefined, {
-    enabled: !!user && user.rol === 'ADMIN', // Only admins need availability alerts
-    refetchInterval: 4000,
-  });
+  const notifQuery = trpc.notificaciones.getAll.useQuery(
+    user ? { docenteId: user.id, rol: user.rol } : undefined,
+    {
+      enabled: !!user,
+      refetchInterval: 4000,
+    }
+  );
 
   const markAllMutation = trpc.notificaciones.markAllAsRead.useMutation({
     onSuccess: () => {
@@ -209,8 +212,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
             </button>
 
-            {/* Bell Icon & Notification panel (Visible only for ADMIN) */}
-            {user?.rol === 'ADMIN' && (
+            {/* Bell Icon & Notification panel (Visible for both ADMIN and DOCENTE) */}
+            {user && (
               <div className="relative">
                 <button
                   onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -253,7 +256,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                           <div className="flex gap-2">
                             {unreadCount > 0 && (
                               <button
-                                onClick={() => markAllMutation.mutate()}
+                                onClick={() => markAllMutation.mutate(user ? { docenteId: user.id, rol: user.rol } : undefined)}
                                 className="text-[10px] text-purple-600 dark:text-purple-400 font-bold hover:underline"
                               >
                                 Marcar leídas
@@ -261,7 +264,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                             )}
                             {notifQuery.data && notifQuery.data.length > 0 && (
                               <button
-                                onClick={() => clearAllMutation.mutate()}
+                                onClick={() => clearAllMutation.mutate(user ? { docenteId: user.id, rol: user.rol } : undefined)}
                                 className="text-[10px] text-red-500 hover:underline font-bold"
                               >
                                 Limpiar todo
@@ -280,7 +283,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                             <div className="p-10 text-center flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-gray-500">
                               <Clock size={32} className="opacity-40 mb-1" />
                               <span className="text-xs font-bold">No hay notificaciones</span>
-                              <span className="text-[10px] opacity-75">Las alertas de disponibilidad se mostrarán aquí.</span>
+                              <span className="text-[10px] opacity-75">
+                                {user?.rol === 'ADMIN' 
+                                  ? 'Las alertas de disponibilidad se mostrarán aquí.' 
+                                  : 'Las notificaciones académicas se mostrarán aquí.'}
+                              </span>
                             </div>
                           ) : (
                             notifQuery.data.map((notif: any) => (
@@ -336,8 +343,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             <div className="h-8 w-px bg-gray-200 dark:bg-white/10 mx-2" />
 
             <div className="hidden sm:flex flex-col items-end">
-              <span className="text-sm font-semibold text-gray-900 dark:text-white transition-colors">{user?.nombre || 'Admin User'}</span>
-              <span className="text-xs text-purple-600 dark:text-purple-400 uppercase font-bold tracking-widest">{user?.rol || 'Administrador'}</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-white transition-colors">{user?.nombre || 'User'}</span>
+              <span className="text-xs text-purple-600 dark:text-purple-400 uppercase font-bold tracking-widest">{user?.rol === 'ADMIN' ? 'Administrador' : 'Docente'}</span>
             </div>
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-600 to-blue-600 flex items-center justify-center border-2 border-white/10 p-0.5 shadow-lg">
               <div className="w-full h-full rounded-full bg-white dark:bg-[#0a0a0f] flex items-center justify-center">

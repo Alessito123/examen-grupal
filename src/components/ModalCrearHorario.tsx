@@ -8,9 +8,10 @@ interface ModalCrearHorarioProps {
   onClose: () => void;
   onSuccess: () => void;
   horarioToEdit?: any;
+  defaultSemestre?: string;
 }
 
-const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, onSuccess, horarioToEdit }) => {
+const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, onSuccess, horarioToEdit, defaultSemestre }) => {
   const [formData, setFormData] = useState({
     docenteId: '',
     cursoId: '',
@@ -19,7 +20,8 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     horaInicio: '08:00',
     horaFin: '10:00',
     tipoCurso: 'teoria' as 'teoria' | 'laboratorio',
-    grupo: ''
+    grupo: '',
+    semestre: '2026-I'
   });
 
   const formatToTimeInput = (dateVal: string | Date) => {
@@ -47,7 +49,8 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
         horaInicio: formatToTimeInput(horarioToEdit.horaInicio) || '08:00',
         horaFin: formatToTimeInput(horarioToEdit.horaFin) || '10:00',
         tipoCurso: horarioToEdit.tipoCurso as 'teoria' | 'laboratorio',
-        grupo: horarioToEdit.grupo || ''
+        grupo: horarioToEdit.grupo || '',
+        semestre: horarioToEdit.semestre || defaultSemestre || '2026-I'
       });
     } else if (isOpen) {
       setFormData({
@@ -58,10 +61,11 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
         horaInicio: '08:00',
         horaFin: '10:00',
         tipoCurso: 'teoria',
-        grupo: ''
+        grupo: '',
+        semestre: defaultSemestre || '2026-I'
       });
     }
-  }, [horarioToEdit, isOpen]);
+  }, [horarioToEdit, isOpen, defaultSemestre]);
 
   const validarQuery = trpc.horarios.validarConflicto.useQuery(
     {
@@ -73,6 +77,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
       horaFin: `1970-01-01T${formData.horaFin}:00Z`,
       cursoId: Number(formData.cursoId) || undefined,
       grupo: formData.grupo || null,
+      semestre: formData.semestre,
     },
     {
       enabled: !!formData.docenteId && !!formData.aulaId && isOpen,
@@ -120,12 +125,20 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
   }, [docentes.data, formData.docenteId, formData.dia, formData.horaInicio, formData.horaFin]);
 
   const filteredCursos = React.useMemo(() => {
+    let rawList = [];
     if (!formData.docenteId) {
-      return cursos.data || [];
+      rawList = cursos.data || [];
+    } else {
+      const selectedDocente = docentes.data?.find((d: any) => d.id === Number(formData.docenteId));
+      rawList = selectedDocente?.cursos || [];
     }
-    const selectedDocente = docentes.data?.find((d: any) => d.id === Number(formData.docenteId));
-    return selectedDocente?.cursos || [];
-  }, [formData.docenteId, cursos.data, docentes.data]);
+    
+    const isOddSem = formData.semestre.endsWith('I');
+    return rawList.filter((c: any) => {
+      if (!c.ciclo) return true;
+      return isOddSem ? c.ciclo % 2 === 1 : c.ciclo % 2 === 0;
+    });
+  }, [formData.docenteId, formData.semestre, cursos.data, docentes.data]);
 
   useEffect(() => {
     if (formData.docenteId && formData.cursoId) {
@@ -165,7 +178,8 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
       horaInicio: `1970-01-01T${formData.horaInicio}:00Z`,
       horaFin: `1970-01-01T${formData.horaFin}:00Z`,
       tipoCurso: formData.tipoCurso,
-      grupo: formData.grupo || null
+      grupo: formData.grupo || null,
+      semestre: formData.semestre
     };
 
     if (horarioToEdit) {
@@ -208,6 +222,21 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
 
         <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
+                <Calendar size={12} /> Semestre Académico
+              </label>
+              <select 
+                required
+                value={formData.semestre}
+                onChange={(e) => setFormData({...formData, semestre: e.target.value})}
+                className="w-full bg-white dark:bg-black/20 border-purple-500/20 text-purple-600 focus:border-purple-500"
+              >
+                <option value="2026-I">2026-I (Ciclos Impares)</option>
+                <option value="2026-II">2026-II (Ciclos Pares)</option>
+              </select>
+            </div>
+
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                 <User size={12} /> Docente

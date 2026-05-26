@@ -23,10 +23,25 @@ const BLOQUES = [
   { label: '06:00 PM - 07:00 PM', value: '18:00-19:00' }
 ] as const;
 
+const getSemestresDinamicos = (): string[] => {
+  const currentYear = new Date().getFullYear();
+  return [
+    `${currentYear - 1}-I`,
+    `${currentYear - 1}-II`,
+    `${currentYear}-I`,
+    `${currentYear}-II`,
+    `${currentYear + 1}-I`,
+    `${currentYear + 1}-II`,
+  ];
+};
+
+const SEMESTRES = getSemestresDinamicos();
+
 const DisponibilidadPage: React.FC = () => {
   const { user } = useAuth();
   const docenteId = user?.id;
 
+  const [selectedSemestre, setSelectedSemestre] = useState(() => `${new Date().getFullYear()}-I`);
   const [selectedSlots, setSelectedSlots] = useState<{ dia: string; bloque: string }[]>([]);
   const [notification, setNotification] = useState<{ title: string; message: string; type: 'success' | 'error' } | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -40,17 +55,26 @@ const DisponibilidadPage: React.FC = () => {
     { enabled: !!docenteId }
   );
 
+  const disponibilidadQuery = trpc.docentes.getDisponibilidadBySemestre.useQuery(
+    { docenteId: docenteId || 0, semestre: selectedSemestre },
+    { enabled: !!docenteId }
+  );
+
   const horariosQuery = trpc.horarios.getAll.useQuery();
-  const hasSchedules = (horariosQuery.data || []).length > 0;
+  
+  // Bloqueado solo si ya existen horarios generados para este semestre en específico
+  const hasSchedules = React.useMemo(() => {
+    return (horariosQuery.data || []).some((h: any) => h.semestre === selectedSemestre);
+  }, [horariosQuery.data, selectedSemestre]);
 
   const updateMutation = trpc.docentes.updateDisponibilidad.useMutation({
     onSuccess: () => {
       showNotification(
         'Guardado Correctamente',
-        'Tus preferencias de disponibilidad horaria se han sincronizado con éxito. El administrador las tomará en cuenta para el cronograma final.',
+        `Tus preferencias de disponibilidad horaria para el semestre ${selectedSemestre} se han sincronizado con éxito.`,
         'success'
       );
-      docenteQuery.refetch();
+      disponibilidadQuery.refetch();
     },
     onError: (err) => {
       showNotification(
@@ -62,18 +86,32 @@ const DisponibilidadPage: React.FC = () => {
   });
 
   useEffect(() => {
-    const data = docenteQuery.data as any;
-    if (data?.disponibilidad) {
+    if (disponibilidadQuery.data) {
       try {
-        const parsed = JSON.parse(data.disponibilidad);
+        const parsed = JSON.parse(disponibilidadQuery.data.bloques);
         if (Array.isArray(parsed)) {
           setSelectedSlots(parsed);
         }
       } catch (e) {
-        console.error('Error al parsear disponibilidad:', e);
+        console.error('Error al parsear disponibilidad del semestre:', e);
+      }
+    } else {
+      // Fallback: Si no hay disponibilidad del semestre, cargamos la disponibilidad global como sugerencia inicial
+      const globalData = docenteQuery.data as any;
+      if (globalData?.disponibilidad) {
+        try {
+          const parsed = JSON.parse(globalData.disponibilidad);
+          if (Array.isArray(parsed)) {
+            setSelectedSlots(parsed);
+          }
+        } catch (e) {
+          setSelectedSlots([]);
+        }
+      } else {
+        setSelectedSlots([]);
       }
     }
-  }, [docenteQuery.data]);
+  }, [disponibilidadQuery.data, docenteQuery.data, selectedSemestre]);
 
   // Auto-close notification after 5 seconds
   useEffect(() => {
@@ -105,7 +143,8 @@ const DisponibilidadPage: React.FC = () => {
     if (!docenteId) return;
     updateMutation.mutate({
       id: docenteId,
-      disponibilidad: JSON.stringify(selectedSlots)
+      disponibilidad: JSON.stringify(selectedSlots),
+      semestre: selectedSemestre
     });
   };
 
@@ -297,7 +336,7 @@ const DisponibilidadPage: React.FC = () => {
         )}
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent flex items-center gap-3">
               <Clock className="text-purple-600 shrink-0" size={32} />
@@ -308,11 +347,24 @@ const DisponibilidadPage: React.FC = () => {
             </p>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 md:flex-nowrap flex-wrap w-full md:w-auto">
+            <div className="flex items-center gap-2 bg-gray-100 dark:bg-white/5 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-white/10 w-full sm:w-auto">
+              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest whitespace-nowrap">Semestre:</span>
+              <select
+                value={selectedSemestre}
+                onChange={(e) => setSelectedSemestre(e.target.value)}
+                className="bg-transparent border-none text-sm font-bold text-purple-600 dark:text-purple-400 focus:ring-0 cursor-pointer p-0 pr-8"
+              >
+                {SEMESTRES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
             <button
               onClick={prefillTypical}
               disabled={hasSchedules}
-              className={`px-4 py-2 text-xs font-semibold rounded-xl transition-all flex items-center gap-2 ${
+              className={`px-4 py-2.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-2 ${
                 hasSchedules
                   ? 'bg-gray-100 text-gray-400 dark:bg-white/5 dark:text-gray-600 cursor-not-allowed opacity-50'
                   : 'text-purple-600 dark:text-purple-400 bg-purple-500/10 hover:bg-purple-500/20'
@@ -324,7 +376,7 @@ const DisponibilidadPage: React.FC = () => {
             <button
               onClick={clearAll}
               disabled={hasSchedules}
-              className={`px-4 py-2 text-xs font-semibold rounded-xl transition-all flex items-center gap-2 ${
+              className={`px-4 py-2.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-2 ${
                 hasSchedules
                   ? 'bg-gray-100 text-gray-400 dark:bg-white/5 dark:text-gray-600 cursor-not-allowed opacity-50'
                   : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5'

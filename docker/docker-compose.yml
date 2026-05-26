@@ -20,10 +20,31 @@ services:
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
+      - DATABASE_URL=postgresql://postgres:1234@db:5432/sistema_horarios?schema=public
     volumes:
       - ../:/app
       - /app/node_modules
     command: npx next dev -H 0.0.0.0 -p 3000
+    depends_on:
+      - db
+
+  # ========================
+  # PostgreSQL Database (Local)
+  # ========================
+  db:
+    image: postgres:15-alpine
+    container_name: examen-grupal-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: sistema_horarios
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - examen-net
 
 # ========================
 # Volumes persistentes

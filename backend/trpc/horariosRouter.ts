@@ -33,14 +33,18 @@ export const horariosRouter = router({
     });
   }),
 
-  generarAutomatico: publicProcedure.mutation(async () => {
-    return generarHorariosAutomaticamente();
-  }),
+  generarAutomatico: publicProcedure
+    .input(z.object({ semestre: z.string() }))
+    .mutation(async ({ input }) => {
+      return generarHorariosAutomaticamente(input.semestre);
+    }),
 
-  deleteAll: publicProcedure.mutation(async () => {
-    await prisma.horario.deleteMany({});
-    return { success: true };
-  }),
+  deleteAll: publicProcedure
+    .input(z.object({ semestre: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.horario.deleteMany({ where: { semestre: input.semestre } });
+      return { success: true };
+    }),
 
   validarConflicto: publicProcedure
     .input(z.object({
@@ -52,16 +56,18 @@ export const horariosRouter = router({
       horaFin: z.string(),
       cursoId: z.number().int().optional(),
       grupo: z.string().nullable().optional(),
+      semestre: z.string(),
     }))
     .query(async ({ input }) => {
-      const { id, docenteId, aulaId, dia, horaInicio, horaFin, cursoId, grupo } = input;
+      const { id, docenteId, aulaId, dia, horaInicio, horaFin, cursoId, grupo, semestre } = input;
       
       const inicio = new Date(horaInicio);
       const fin = new Date(horaFin);
 
-      // 1. Check schedule overlap for teacher or classroom
+      // 1. Check schedule overlap for teacher or classroom within the same semester
       const conflictos = await prisma.horario.findMany({
         where: {
+          semestre: semestre,
           dia: dia as any,
           NOT: id ? { id } : undefined,
           OR: [
@@ -92,10 +98,11 @@ export const horariosRouter = router({
         };
       }
 
-      // 2. Check shared course group conflict: if different teachers try to teach the same group of the same course
+      // 2. Check shared course group conflict within the same semester
       if (cursoId && grupo) {
         const conflictoGrupo = await prisma.horario.findFirst({
           where: {
+            semestre: semestre,
             cursoId,
             grupo: grupo ?? null,
             docenteId: { not: docenteId },
@@ -133,6 +140,7 @@ export const horariosRouter = router({
       horaFin: z.string(),
       tipoCurso: z.enum(['teoria', 'laboratorio']),
       grupo: z.string().nullable().optional(),
+      semestre: z.string(),
     }))
     .mutation(async ({ input }) => {
       const inicio = new Date(input.horaInicio);
@@ -143,6 +151,7 @@ export const horariosRouter = router({
       if (input.cursoId && input.grupo) {
         const conflictoGrupo = await prisma.horario.findFirst({
           where: {
+            semestre: input.semestre,
             cursoId: input.cursoId,
             grupo: input.grupo ?? null,
             docenteId: { not: input.docenteId }
@@ -157,7 +166,7 @@ export const horariosRouter = router({
         }
       }
 
-      return prisma.horario.create({
+      const newHorario = await prisma.horario.create({
         data: {
           docenteId: input.docenteId,
           cursoId: input.cursoId,
@@ -167,8 +176,25 @@ export const horariosRouter = router({
           horaFin: fin,
           tipoCurso: input.tipoCurso as TipoCurso,
           grupo: input.grupo ?? null,
+          semestre: input.semestre
         } as any
       });
+
+      // Crear notificación para el docente informando que el administrador le ha asignado un horario
+      try {
+        await (prisma as any).notificacion.create({
+          data: {
+            titulo: 'Horarios Académicos Creados',
+            mensaje: `El administrador ha creado y publicado los horarios para el semestre académico ${input.semestre}. Ya puedes ingresar a visualizarlos.`,
+            docenteId: input.docenteId,
+            visto: false
+          }
+        });
+      } catch (error) {
+        console.error('Error al crear notificación para docente en horario manual:', error);
+      }
+
+      return newHorario;
     }),
 
   update: publicProcedure
@@ -182,6 +208,7 @@ export const horariosRouter = router({
       horaFin: z.string(),
       tipoCurso: z.enum(['teoria', 'laboratorio']),
       grupo: z.string().nullable().optional(),
+      semestre: z.string(),
     }))
     .mutation(async ({ input }) => {
       const { id } = input;
@@ -193,6 +220,7 @@ export const horariosRouter = router({
       if (input.cursoId && input.grupo) {
         const conflictoGrupo = await prisma.horario.findFirst({
           where: {
+            semestre: input.semestre,
             cursoId: input.cursoId,
             grupo: input.grupo ?? null,
             docenteId: { not: input.docenteId },
@@ -208,7 +236,7 @@ export const horariosRouter = router({
         }
       }
 
-      return prisma.horario.update({
+      const updatedHorario = await prisma.horario.update({
         where: { id },
         data: {
           docenteId: input.docenteId,
@@ -219,8 +247,25 @@ export const horariosRouter = router({
           horaFin: fin,
           tipoCurso: input.tipoCurso as TipoCurso,
           grupo: input.grupo ?? null,
+          semestre: input.semestre
         } as any
       });
+
+      // Crear notificación para el docente informando que el administrador le ha modificado/asignado un horario
+      try {
+        await (prisma as any).notificacion.create({
+          data: {
+            titulo: 'Horarios Académicos Creados',
+            mensaje: `El administrador ha creado y publicado los horarios para el semestre académico ${input.semestre}. Ya puedes ingresar a visualizarlos.`,
+            docenteId: input.docenteId,
+            visto: false
+          }
+        });
+      } catch (error) {
+        console.error('Error al crear notificación para docente en horario manual modificado:', error);
+      }
+
+      return updatedHorario;
     }),
 
   delete: publicProcedure
