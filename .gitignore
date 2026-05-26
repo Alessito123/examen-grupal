@@ -1,0 +1,59 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Next.js build output
+.next/
+out/
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs/
+*.log
+pids/
+*.pid
+*.seed
+*.tsbuildinfo
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# TypeScript
+*.tsbuildinfo
+
+# Prisma
+prisma/migrations/
+prisma/dev.db
+
+# Docker
+docker-compose.override.yml
+*.dockerignore
+Dockerfile*
+
+# Test Coverage
+coverage/
+*.lcov
+
+# PDF outputs / Reports
+public/pdfReports/
+*.pdf
+
+# Optional: cache, temp files
+.cache/
+.tmp/

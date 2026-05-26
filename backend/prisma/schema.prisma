@@ -1,0 +1,124 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["clientExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =========================
+// Docentes
+// =========================
+model Docente {
+  id         Int        @id @default(autoincrement())
+  nombre     String
+  categoria  Categoria
+  fechaNombramiento DateTime?
+  fechaContrato     DateTime?
+  dni        String?    @unique
+  email      String?    @unique
+  password   String?
+  resetToken String?    @unique
+  resetTokenExpiry DateTime?
+  rol        Rol        @default(DOCENTE)
+  disponibilidad String?    // JSON string representation of teacher availability blocks
+  cursos     Curso[]    @relation("DocenteCursos")
+
+  horarios   Horario[]
+}
+
+enum Categoria {
+  principal
+  asociado
+  auxiliar
+  jefe_practica
+  contratado
+}
+
+enum Rol {
+  ADMIN
+  DOCENTE
+}
+
+// =========================
+// Cursos
+// =========================
+model Curso {
+  id       Int        @id @default(autoincrement())
+  nombre   String
+  tipo     TipoCurso
+  creditos Int
+  codigo   String?
+  ciclo    Int?       @default(1)
+  docentes Docente[]   @relation("DocenteCursos")
+
+  horarios Horario[]
+}
+
+enum TipoCurso {
+  teoria
+  laboratorio
+}
+
+// =========================
+// Aulas
+// =========================
+model Aula {
+  id       Int        @id @default(autoincrement())
+  nombre   String
+  tipo     TipoCurso
+  capacidad Int
+  ubicacion String?   @default("Pabellón de Sistemas")
+
+  horarios Horario[]
+}
+
+// =========================
+// Horarios
+// =========================
+model Horario {
+  id         Int        @id @default(autoincrement())
+  docente    Docente    @relation(fields: [docenteId], references: [id])
+  docenteId  Int
+  curso      Curso      @relation(fields: [cursoId], references: [id])
+  cursoId    Int
+  aula       Aula       @relation(fields: [aulaId], references: [id])
+  aulaId     Int
+  dia        Dia
+  horaInicio DateTime
+  horaFin    DateTime
+  tipoCurso  TipoCurso
+  grupo      String?
+}
+
+enum Dia {
+  Lunes
+  Martes
+  Miercoles
+  Jueves
+  Viernes
+  Sabado
+}
+
+// =========================
+// Reglas de Asignación
+// =========================
+model ReglaAsignacion {
+  id                Int    @id @default(autoincrement())
+  prioridadCategoria Json   // Ej: {"principal":1,"asociado":2,...}
+  duracionCurso     Int     // duración en minutos
+}
+
+// =========================
+// Notificaciones de Disponibilidad
+// =========================
+model Notificacion {
+  id        Int      @id @default(autoincrement())
+  titulo    String
+  mensaje   String
+  docenteId Int?
+  visto     Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

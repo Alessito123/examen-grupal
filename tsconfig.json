@@ -1,0 +1,75 @@
+{
+  "compilerOptions": {
+    /* Básicos */
+    "target": "ESNext", /* Objetivo de compilación moderno */
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ], /* Librerías incluidas para navegador y ESNext */
+    "allowJs": true, /* Permite archivos .js junto con TypeScript */
+    "checkJs": false,
+    /* Módulos y resolución */
+    "module": "ESNext", /* Sistema de módulos moderno */
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true, /* Permite importar JSON */
+    "esModuleInterop": true, /* Compatibilidad CommonJS / ES Modules */
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true, /* Evita errores de mayúsculas/minúsculas *//* Tipado y estrictos */
+    "strict": true, /* Habilita todas las comprobaciones estrictas */
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    /* Output y source maps */
+    "noEmit": true, /* Next.js se encarga del build, no emitir JS */
+    "incremental": true, /* Compilación incremental más rápida */
+    "skipLibCheck": true, /* Evita revisar tipos de node_modules */
+    "sourceMap": true,
+    /* JSX / React */
+    "jsx": "preserve", /* Next.js se encarga del transform JSX */
+    "jsxImportSource": "react",
+    "allowUmdGlobalAccess": true,
+    /* Paths y aliases */
+    "baseUrl": ".",
+    "paths": {
+      "@components/*": [
+        "src/components/*"
+      ],
+      "@layouts/*": [
+        "src/layouts/*"
+      ],
+      "@hooks/*": [
+        "src/hooks/*"
+      ],
+      "@utils/*": [
+        "src/utils/*"
+      ],
+      "@services/*": [
+        "backend/services/*"
+      ],
+      "@db/*": [
+        "backend/prisma/*"
+      ]
+    },
+    "isolatedModules": true
+  },
+  "exclude": [
+    "node_modules",
+    ".next",
+    "out",
+    "dist",
+    "build",
+    "docker"
+  ],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "backend/**/*.ts",
+    "backend/**/*.tsx",
+    "scripts/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}

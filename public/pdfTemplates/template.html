@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Reporte de Horarios</title>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 20px;
+      color: #111827;
+    }
+
+    h1 {
+      text-align: center;
+      color: #1d4ed8; /* Azul Tailwind */
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+
+    th, td {
+      border: 1px solid #d1d5db; /* Gris */
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f3f4f6; /* Gris claro */
+    }
+
+    tr:nth-child(even) {
+      background-color: #f9fafb;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      margin-top: 40px;
+      color: #6b7280; /* Gris oscuro */
+    }
+  </style>
+</head>
+<body>
+  <h1>Reporte de Horarios</h1>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Día</th>
+        <th>Hora Inicio</th>
+        <th>Hora Fin</th>
+        <th>Docente</th>
+        <th>Curso</th>
+        <th>Aula</th>
+        <th>Tipo</th>
+      </tr>
+    </thead>
+    <tbody id="horarios-table-body">
+      <!-- Las filas se insertan dinámicamente desde Puppeteer o JS -->
+      <!-- Ejemplo:
+      <tr>
+        <td>Lunes</td>
+        <td>08:00</td>
+        <td>10:00</td>
+        <td>Juan Pérez</td>
+        <td>Matemáticas</td>
+        <td>A101</td>
+        <td>Teoría</td>
+      </tr>
+      -->
+    </tbody>
+  </table>
+
+  <div class="footer">
+    Generado automáticamente por el Sistema de Horarios - Universidad Nacional de Trujillo
+  </div>
+</body>
+</html>

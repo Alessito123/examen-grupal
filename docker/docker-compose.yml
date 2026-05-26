@@ -1,0 +1,39 @@
+
+services:
+  # ========================
+  # Next.js App
+  # ========================
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: examen-grupal-app
+    restart: always
+    env_file:
+      - ../.env
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - examen-net
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ../:/app
+      - /app/node_modules
+    command: npx next dev -H 0.0.0.0 -p 3000
+
+# ========================
+# Volumes persistentes
+# ========================
+volumes:
+  pgdata:
+
+# ========================
+# Network
+# ========================
+networks:
+  examen-net:
+    driver: bridge
