@@ -12,6 +12,21 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
     img.src = src;
   });
 };
+
+const hslToRgb = (h: number, s: number, l: number): [number, number, number] => {
+  s /= 100;
+  l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) =>
+    l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [
+    Math.round(255 * f(0)),
+    Math.round(255 * f(8)),
+    Math.round(255 * f(4))
+  ];
+};
+
 interface Horario {
   id: number;
   dia: string;
@@ -643,10 +658,11 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           const cellY = startY + rowHeight + startIndex * slotHeight;
           const cellH = rowspan * slotHeight;
 
+          const hue = getCourseHue(h.curso.nombre);
           const isLab = h.tipoCurso.toLowerCase() === 'laboratorio';
-          const bgColor = isLab ? [254, 243, 199] : [224, 242, 254]; // Amber-50 vs Sky-50
-          const borderColor = isLab ? [253, 230, 138] : [186, 230, 253]; // Amber-200 vs Sky-200
-          const textColor = isLab ? [180, 83, 9] : [3, 105, 161]; // Amber-700 vs Sky-700
+          const bgColor = hslToRgb(hue, 85, 95);
+          const borderColor = hslToRgb(hue, 70, 82);
+          const textColor = hslToRgb(hue, 90, 20); // soft dark text for high contrast print
 
           const pad = 0.8;
           // Premium rounded background
