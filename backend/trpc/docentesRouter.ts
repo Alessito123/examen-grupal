@@ -140,10 +140,13 @@ export const docentesRouter = router({
     }))
     .mutation(async ({ input }) => {
       const countHorarios = await prisma.horario.count({
-        where: { semestre: input.semestre }
+        where: {
+          semestre: input.semestre,
+          docenteId: input.id
+        }
       });
       if (countHorarios > 0) {
-        throw new Error(`No es posible modificar la disponibilidad para el semestre ${input.semestre} porque ya se han programado los horarios oficiales.`);
+        throw new Error(`No es posible modificar tu disponibilidad para el semestre ${input.semestre} porque el administrador ya ha programado horarios oficiales para ti.`);
       }
 
       const docente = await prisma.docente.findUnique({

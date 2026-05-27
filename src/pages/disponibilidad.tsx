@@ -62,10 +62,12 @@ const DisponibilidadPage: React.FC = () => {
 
   const horariosQuery = trpc.horarios.getAll.useQuery();
   
-  // Bloqueado solo si ya existen horarios generados para este semestre en específico
+  // Bloqueado solo si ya existen horarios generados para este semestre en específico para este docente
   const hasSchedules = React.useMemo(() => {
-    return (horariosQuery.data || []).some((h: any) => h.semestre === selectedSemestre);
-  }, [horariosQuery.data, selectedSemestre]);
+    return (horariosQuery.data || []).some(
+      (h: any) => h.semestre === selectedSemestre && h.docenteId === docenteId
+    );
+  }, [horariosQuery.data, selectedSemestre, docenteId]);
 
   const updateMutation = trpc.docentes.updateDisponibilidad.useMutation({
     onSuccess: () => {
@@ -395,7 +397,7 @@ const DisponibilidadPage: React.FC = () => {
             <div className="text-xs space-y-1">
               <p className="font-extrabold text-sm text-red-700 dark:text-red-300">Disponibilidad Bloqueada</p>
               <p className="text-red-600/80 dark:text-red-400/80 font-medium">
-                No se pueden realizar cambios en la disponibilidad porque el calendario de horarios oficial ya ha sido programado y está activo en el sistema.
+                No se pueden realizar cambios en la disponibilidad porque el administrador ya ha programado horarios oficiales para ti en este semestre académico.
               </p>
             </div>
           </div>
