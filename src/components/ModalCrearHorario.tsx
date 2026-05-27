@@ -32,7 +32,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     return `${hours}:${minutes}`;
   };
 
-  const docentes = trpc.docentes.getAll.useQuery();
+  const docentes = trpc.docentes.getDocentesConDisponibilidad.useQuery({ semestre: formData.semestre });
   const cursos = trpc.cursos.getAll.useQuery();
   const aulas = trpc.aulas.getAll.useQuery();
   const utils = trpc.useContext();
