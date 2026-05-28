@@ -123,13 +123,13 @@ const CustomCursor: React.FC = () => {
       {/* Outer Ring */}
       <div
         ref={cursorRef}
-        className="fixed top-0 left-0 w-8 h-8 border-2 border-purple-600 dark:border-purple-400 rounded-full pointer-events-none z-[9999] will-change-transform"
+        className="fixed top-0 left-0 w-8 h-8 border-2 border-purple-600 dark:border-purple-400 rounded-full pointer-events-none z-[999999] will-change-transform"
         style={{ transform: 'translate3d(-100px, -100px, 0)' }}
       />
       {/* Inner Dot */}
       <div
         ref={dotRef}
-        className="fixed top-0 left-0 w-1.5 h-1.5 bg-purple-600 dark:bg-purple-400 rounded-full pointer-events-none z-[9999] will-change-transform"
+        className="fixed top-0 left-0 w-1.5 h-1.5 bg-purple-600 dark:bg-purple-400 rounded-full pointer-events-none z-[999999] will-change-transform"
         style={{ transform: 'translate3d(-100px, -100px, 0)' }}
       />
     </>

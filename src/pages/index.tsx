@@ -126,7 +126,7 @@ const CustomCursor = () => {
   return (
     <div 
       ref={cursorRef} 
-      className={`fixed top-0 left-0 pointer-events-none z-[9999] will-change-transform custom-cursor
+      className={`fixed top-0 left-0 pointer-events-none z-[999999] will-change-transform custom-cursor
         ${isHovered ? 'hovered' : ''}`}
       style={{ mixBlendMode: 'screen' }}
     >
