@@ -13,10 +13,19 @@ export const notificacionesRouter = router({
     .query(async ({ input, ctx }) => {
       const isTeacher = (ctx.user?.rol === 'DOCENTE') || (input?.rol === 'DOCENTE');
       const teacherId = ctx.user?.id || input?.docenteId;
+      const isAdmin = (ctx.user?.rol === 'ADMIN') || (input?.rol === 'ADMIN');
 
       if (isTeacher && teacherId) {
         return (prisma as any).notificacion.findMany({
           where: { docenteId: teacherId },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        });
+      }
+
+      if (isAdmin) {
+        return (prisma as any).notificacion.findMany({
+          where: { docenteId: null }, // Solo alertas globales para administradores
           orderBy: { createdAt: 'desc' },
           take: 50,
         });
@@ -33,11 +42,22 @@ export const notificacionesRouter = router({
     .query(async ({ input, ctx }) => {
       const isTeacher = (ctx.user?.rol === 'DOCENTE') || (input?.rol === 'DOCENTE');
       const teacherId = ctx.user?.id || input?.docenteId;
+      const isAdmin = (ctx.user?.rol === 'ADMIN') || (input?.rol === 'ADMIN');
 
       if (isTeacher && teacherId) {
         return (prisma as any).notificacion.findMany({
           where: {
             docenteId: teacherId,
+            visto: false,
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+
+      if (isAdmin) {
+        return (prisma as any).notificacion.findMany({
+          where: {
+            docenteId: null,
             visto: false,
           },
           orderBy: { createdAt: 'desc' },
@@ -55,11 +75,20 @@ export const notificacionesRouter = router({
     .mutation(async ({ input, ctx }) => {
       const isTeacher = (ctx.user?.rol === 'DOCENTE') || (input?.rol === 'DOCENTE');
       const teacherId = ctx.user?.id || input?.docenteId;
+      const isAdmin = (ctx.user?.rol === 'ADMIN') || (input?.rol === 'ADMIN');
 
       if (isTeacher && teacherId) {
         await (prisma as any).notificacion.updateMany({
           where: {
             docenteId: teacherId,
+            visto: false,
+          },
+          data: { visto: true },
+        });
+      } else if (isAdmin) {
+        await (prisma as any).notificacion.updateMany({
+          where: {
+            docenteId: null,
             visto: false,
           },
           data: { visto: true },
@@ -78,10 +107,15 @@ export const notificacionesRouter = router({
     .mutation(async ({ input, ctx }) => {
       const isTeacher = (ctx.user?.rol === 'DOCENTE') || (input?.rol === 'DOCENTE');
       const teacherId = ctx.user?.id || input?.docenteId;
+      const isAdmin = (ctx.user?.rol === 'ADMIN') || (input?.rol === 'ADMIN');
 
       if (isTeacher && teacherId) {
         await (prisma as any).notificacion.deleteMany({
           where: { docenteId: teacherId },
+        });
+      } else if (isAdmin) {
+        await (prisma as any).notificacion.deleteMany({
+          where: { docenteId: null },
         });
       } else {
         await (prisma as any).notificacion.deleteMany({});
