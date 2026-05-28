@@ -3,10 +3,12 @@ import { DIAS_SEMANA } from '../config/constants';
 import type { TipoCurso, Docente, Curso, Aula, Horario } from '@prisma/client';
 
 export class AsignacionService {
-  // Bloques horarios predefinidos (8:00 - 20:00)
+  // Bloques horarios predefinidos (7:00 - 20:00)
   static readonly BLOQUES = [
-    { inicio: 8, fin: 10 },
+    { inicio: 7, fin: 9 },
+    { inicio: 9, fin: 11 },
     { inicio: 10, fin: 12 },
+    { inicio: 12, fin: 14 },
     { inicio: 14, fin: 16 },
     { inicio: 16, fin: 18 },
     { inicio: 18, fin: 20 },

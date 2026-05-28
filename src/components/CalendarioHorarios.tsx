@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, MapPin, User, BookOpen, FileSpreadsheet, Download, FileText, Eye } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import ModalPDF from './ModalPDF';
+import { SCHEDULE_DAYS, SCHEDULE_END_HOUR, SCHEDULE_START_HOUR, SCHEDULE_TIME_MARKERS } from '../utils/scheduleConfig';
 
 const loadImage = (src: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
@@ -45,10 +46,40 @@ interface CalendarioHorariosProps {
   selectedSemestre?: string;
 }
 
-const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
-const START_HOUR = 7;
-const END_HOUR = 20;
+const DIAS: readonly string[] = SCHEDULE_DAYS;
+const START_HOUR = SCHEDULE_START_HOUR;
+const END_HOUR = SCHEDULE_END_HOUR;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
+
+const escapeHtml = (value: string | null | undefined) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const normalizeGroupLabel = (grupo?: string | null) => {
+  if (!grupo) return '';
+  const clean = grupo.replace(/grupo/gi, '').trim();
+  return clean ? `G${clean}` : grupo.toUpperCase();
+};
+
+const formatTeacherName = (fullName: string) => {
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length <= 1) return fullName;
+  return `${parts[0]} ${parts[1].charAt(0)}.`;
+};
+
+const truncateText = (text: string, maxLength: number) => {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+};
+
+const minutesFromDate = (date: string | Date) => {
+  const d = new Date(date);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+};
 
 const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selectedCiclo, selectedSemestre }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -128,15 +159,12 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
         L,
         G: item.grupos.size || 1,
         total: item.totalHours,
-        dpto: 'INGENIERÍA DE SISTEMAS'
+        dpto: 'INGENIERÃA DE SISTEMAS'
       };
     });
   }, [horarios]);
 
-  const timeSlots: string[] = [];
-  for (let i = START_HOUR; i <= END_HOUR; i++) {
-    timeSlots.push(`${i.toString().padStart(2, '0')}:00`);
-  }
+  const timeSlots = SCHEDULE_TIME_MARKERS;
 
   // Extract all unique course names present in the current view to ensure perfect color separation
   const uniqueCourses = Array.from(new Set(horarios.map(h => h.curso?.nombre).filter(Boolean)));
@@ -177,34 +205,56 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
 
   const exportToExcel = () => {
     const slotsCount = END_HOUR - START_HOUR;
-    const grid: Array<Array<{ horario: Horario; rowspan: number; isMain: boolean } | null>> = Array.from(
+    const grid: Horario[][][] = Array.from(
       { length: slotsCount },
-      () => Array(DIAS.length).fill(null)
+      () => Array.from({ length: DIAS.length }, () => [])
     );
 
-    horarios.forEach((h) => {
-      const dStart = new Date(h.horaInicio);
-      const dFin = new Date(h.horaFin);
-      const startHour = dStart.getUTCHours();
-      const endHour = dFin.getUTCHours();
+    for (let i = 0; i < slotsCount; i++) {
+      const slotStart = (START_HOUR + i) * 60;
+      const slotEnd = slotStart + 60;
 
-      const dayIndex = DIAS.indexOf(h.dia);
-      if (dayIndex === -1) return;
+      DIAS.forEach((dia, dayIndex) => {
+        grid[i][dayIndex] = horarios
+          .filter((h) => {
+            if (h.dia !== dia) return false;
+            const startMinutes = minutesFromDate(h.horaInicio);
+            const endMinutes = minutesFromDate(h.horaFin);
+            return Math.max(startMinutes, slotStart) < Math.min(endMinutes, slotEnd);
+          })
+          .sort((a, b) => {
+            const startDiff = minutesFromDate(a.horaInicio) - minutesFromDate(b.horaInicio);
+            if (startDiff !== 0) return startDiff;
+            return a.curso.nombre.localeCompare(b.curso.nombre);
+          });
+      });
+    }
 
-      const startIndex = Math.max(0, startHour - START_HOUR);
-      const endIndex = Math.min(slotsCount, endHour - START_HOUR);
-      const rowspan = endIndex - startIndex;
+    const renderExcelCard = (h: Horario) => {
+      const hue = getCourseHue(h.curso.nombre);
+      const tipoLabel = h.tipoCurso.toLowerCase() === 'teoria' ? 'Teo' : 'Lab';
+      const groupLabel = normalizeGroupLabel(h.grupo);
+      const title = `${h.curso.codigo ? `${h.curso.codigo} - ` : ''}${h.curso.nombre}`;
 
-      if (rowspan > 0) {
-        for (let i = startIndex; i < endIndex; i++) {
-          if (i === startIndex) {
-            grid[i][dayIndex] = { horario: h, rowspan, isMain: true };
-          } else {
-            grid[i][dayIndex] = { horario: h, rowspan, isMain: false };
-          }
-        }
-      }
-    });
+      return `
+        <div class="course-card" style="background-color: hsl(${hue}, 85%, 95%); border-left-color: hsl(${hue}, 70%, 45%);">
+          <div class="course-name">${escapeHtml(title)} ${groupLabel ? `<span class="group-badge">${escapeHtml(groupLabel)}</span>` : ''}</div>
+          <div class="course-time">${escapeHtml(formatTime(h.horaInicio))} - ${escapeHtml(formatTime(h.horaFin))} (${tipoLabel})</div>
+          <div class="course-info"><strong>Docente:</strong> ${escapeHtml(h.docente.nombre)}</div>
+          <div class="course-info"><strong>Aula:</strong> ${escapeHtml(h.aula.nombre)}</div>
+        </div>
+      `;
+    };
+
+    const renderExcelCell = (items: Horario[]) => {
+      if (items.length === 0) return '<td class="empty-slot"></td>';
+
+      return `
+        <td class="class-slot">
+          ${items.map(renderExcelCard).join('')}
+        </td>
+      `;
+    };
 
     let html = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
@@ -223,47 +273,49 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           </x:ExcelWorkbook>
         </xml>
         <![endif]-->
-        <meta http-equiv="content-type" content="text/plain; charset=UTF-8"/>
+        <meta http-equiv="content-type" content="text/html; charset=UTF-8"/>
         <style>
           table { border-collapse: collapse; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
           th { border: 1px solid #c2cfd6; background-color: #0f4c81; color: white; font-weight: bold; text-align: center; font-size: 11pt; padding: 8px; }
-          td.time-col { border: 1px solid #c2cfd6; background-color: #f2f5f8; font-weight: bold; text-align: center; color: #4b5563; font-size: 10pt; padding: 6px; }
-          td.empty-slot { border: 1px dashed #e5e7eb; background-color: #fafafa; }
-          td.class-slot { border: 1px solid #94a3b8; text-align: center; vertical-align: middle; padding: 8px; font-size: 9pt; }
-          .course-name { font-weight: bold; font-size: 10pt; color: #1e3a8a; }
-          .course-time { font-style: italic; font-size: 8pt; margin: 3px 0; color: #475569; }
-          .course-info { font-size: 8.5pt; color: #334155; }
+          td.time-col { border: 1px solid #c2cfd6; background-color: #f2f5f8; font-weight: bold; text-align: center; color: #4b5563; font-size: 9.5pt; padding: 6px; width: 115px; }
+          td.empty-slot { border: 1px dashed #e5e7eb; background-color: #fafafa; min-height: 44px; }
+          td.class-slot { border: 1px solid #cbd5e1; vertical-align: top; padding: 4px; font-size: 8.5pt; min-width: 165px; }
+          .course-card { border-left: 4px solid #64748b; border-top: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; margin-bottom: 4px; padding: 5px 6px; text-align: left; }
+          .course-name { font-weight: bold; font-size: 9pt; color: #1e3a8a; }
+          .course-time { font-style: italic; font-size: 7.8pt; margin: 2px 0; color: #475569; }
+          .course-info { font-size: 8pt; color: #334155; line-height: 1.25; }
+          .group-badge { font-size: 7.5pt; color: #b91c1c; font-weight: bold; }
         </style>
       </head>
       <body>
         <h2 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 2px;">UNIVERSIDAD NACIONAL DE TRUJILLO</h2>
-        <h3 style="color: #6b21a8; font-family: 'Segoe UI', sans-serif; margin-top: 0; margin-bottom: 2px;">FACULTAD DE INGENIERÍA</h3>
-        <h4 style="color: #475569; font-family: 'Segoe UI', sans-serif; margin-top: 0; font-weight: normal; margin-bottom: 15px;">Escuela Profesional de Ingeniería de Sistemas</h4>
+        <h3 style="color: #6b21a8; font-family: 'Segoe UI', sans-serif; margin-top: 0; margin-bottom: 2px;">FACULTAD DE INGENIERÃA</h3>
+        <h4 style="color: #475569; font-family: 'Segoe UI', sans-serif; margin-top: 0; font-weight: normal; margin-bottom: 15px;">Escuela Profesional de IngenierÃ­a de Sistemas</h4>
         
         <!-- Metadata Info Table -->
         <table style="margin-bottom: 15px; border-collapse: collapse; font-family: 'Segoe UI', sans-serif; font-size: 9pt;">
           <tr>
             <td style="font-weight: bold; color: #475569; padding-right: 10px;">ESCUELA:</td>
-            <td style="color: #1e293b;">INGENIERÍA DE SISTEMAS</td>
+            <td style="color: #1e293b;">INGENIERÃA DE SISTEMAS</td>
             <td style="width: 40px;"></td>
             <td style="font-weight: bold; color: #475569; padding-right: 10px;">SEDE:</td>
             <td style="color: #1e293b;">VALLE JEQUETEPEQUE</td>
           </tr>
           <tr>
-            <td style="font-weight: bold; color: #475569; padding-right: 10px;">CICLO / SECCIÓN:</td>
-            <td style="color: #1e293b;">${selectedCiclo || 'TODOS'} - SECCIÓN A</td>
+            <td style="font-weight: bold; color: #475569; padding-right: 10px;">CICLO / SECCIÃ“N:</td>
+            <td style="color: #1e293b;">${selectedCiclo || 'TODOS'} - SECCIÃ“N A</td>
             <td></td>
-            <td style="font-weight: bold; color: #475569; padding-right: 10px;">SEMESTRE / AÑO:</td>
+            <td style="font-weight: bold; color: #475569; padding-right: 10px;">SEMESTRE / AÃ‘O:</td>
             <td style="color: #1e293b;">${selectedSemestre || 'TODOS'}</td>
           </tr>
         </table>
 
-        <!-- Summary Table (Tabla Resumen de Distribución de Horas) -->
-        <h3 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 10px; margin-top: 20px;">TABLA RESUMEN DE ASIGNACIÓN DOCENTE Y HORAS</h3>
+        <!-- Summary Table (Tabla Resumen de DistribuciÃ³n de Horas) -->
+        <h3 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 10px; margin-top: 20px;">TABLA RESUMEN DE ASIGNACIÃ“N DOCENTE Y HORAS</h3>
         <table border="1" style="border-collapse: collapse; font-family: 'Segoe UI', sans-serif; margin-bottom: 30px;">
           <thead>
             <tr style="background-color: #0f4c81; color: white;">
-              <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 40px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">N°</th>
+              <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 40px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">NÂ°</th>
               <th style="font-weight: bold; text-align: left; font-size: 9.5pt; padding: 6px; width: 220px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">DOCENTE</th>
               <th style="font-weight: bold; text-align: left; font-size: 9.5pt; padding: 6px; width: 260px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">EXPERIENCIA CURRICULAR</th>
               <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 35px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">T</th>
@@ -292,12 +344,12 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
         </table>
 
         <!-- Weekly Timetable Grid -->
-        <h3 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 10px;">PROGRAMACIÓN HORARIA SEMANAL</h3>
+        <h3 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 10px;">PROGRAMACIÃ“N HORARIA SEMANAL</h3>
         <table border="1">
           <thead>
             <tr>
               <th style="width: 120px;">Hora</th>
-              ${DIAS.map(d => `<th style="width: 180px;">${d}</th>`).join('')}
+              ${DIAS.map(d => `<th style="width: 185px;">${d}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
@@ -311,28 +363,8 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       html += `<td class="time-col">${timeStr}</td>`;
 
       for (let j = 0; j < DIAS.length; j++) {
-        const cell = grid[i][j];
-        if (cell === null) {
-          html += `<td class="empty-slot"></td>`;
-        } else if (cell.isMain) {
-          const h = cell.horario;
-          const hue = getCourseHue(h.curso.nombre);
-          const bgColor = `hsl(${hue}, 85%, 95%)`;
-          const borderColor = `hsl(${hue}, 70%, 82%)`;
-          const textColor = `hsl(${hue}, 90%, 20%)`;
+        html += renderExcelCell(grid[i][j]);
 
-          const tStart = formatTime(h.horaInicio);
-          const tEnd = formatTime(h.horaFin);
-
-          html += `
-            <td class="class-slot" rowspan="${cell.rowspan}" style="background-color: ${bgColor}; border: 1.5px solid ${borderColor}; color: ${textColor};">
-              <div class="course-name">${h.curso.nombre}</div>
-              <div class="course-time">${tStart} - ${tEnd} (${h.tipoCurso === 'teoria' ? 'Teoría' : 'Laboratorio'})</div>
-              <div class="course-info">👤 ${h.docente.nombre}</div>
-              <div class="course-info">📍 ${h.aula.nombre}</div>
-            </td>
-          `;
-        }
       }
       html += `</tr>`;
     }
@@ -386,11 +418,11 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
 
       doc.setFontSize(8);
       doc.setTextColor(80, 80, 80);
-      doc.text("FACULTAD DE INGENIERÍA", textX, 18);
+      doc.text("FACULTAD DE INGENIERÃA", textX, 18);
 
       doc.setFontSize(7.5);
       doc.setFont('helvetica', 'normal');
-      doc.text("ESCUELA PROFESIONAL DE INGENIERÍA DE SISTEMAS", textX, 22);
+      doc.text("ESCUELA PROFESIONAL DE INGENIERÃA DE SISTEMAS", textX, 22);
 
       // Metadata on the left below the header
       let metaY = 28;
@@ -400,7 +432,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.text("ESCUELA:", 12, metaY);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(40, 40, 40);
-      doc.text("INGENIERÍA DE SISTEMAS", 26, metaY);
+      doc.text("INGENIERÃA DE SISTEMAS", 26, metaY);
 
       metaY += 4.5;
       doc.setFont('helvetica', 'bold');
@@ -410,7 +442,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.text(selectedCiclo || 'TODOS', 26, metaY);
 
       doc.setTextColor(120, 120, 120);
-      doc.text("SECCIÓN:", 45, metaY);
+      doc.text("SECCIÃ“N:", 45, metaY);
       doc.setTextColor(40, 40, 40);
       doc.text("A", 60, metaY);
 
@@ -424,7 +456,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       metaY += 4.5;
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(120, 120, 120);
-      doc.text("AÑO ACADÉMICO:", 12, metaY);
+      doc.text("AÃ‘O ACADÃ‰MICO:", 12, metaY);
       doc.setTextColor(40, 40, 40);
 
       let anioText = '2026';
@@ -462,12 +494,12 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.setTextColor(255, 255, 255);
 
       // Column Widths for PDF Summary Table:
-      // N°, DOCENTE, EXPERIENCIA, T, P, L, G, TOTAL, DPTO
+      // NÂ°, DOCENTE, EXPERIENCIA, T, P, L, G, TOTAL, DPTO
       // Total width = 177mm
       const sumColWidths = [7, 45, 50, 6, 6, 6, 6, 13, 38];
 
       let sumCurrentX = tblX;
-      const sumHeaders = ['N°', 'DOCENTE', 'EXPERIENCIA CURRICULAR', 'T', 'P', 'L', 'G', 'T. HORAS', 'DPTO. ACAD.'];
+      const sumHeaders = ['NÂ°', 'DOCENTE', 'EXPERIENCIA CURRICULAR', 'T', 'P', 'L', 'G', 'T. HORAS', 'DPTO. ACAD.'];
       sumHeaders.forEach((hdr, idx) => {
         const w = sumColWidths[idx];
         if (idx === 0 || idx >= 3 && idx <= 7) {
@@ -560,7 +592,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       const colWidths = [27, 40, 40, 40, 40, 40, 40]; // Total width = 27 + 240 = 267mm (with 15mm margins on left/right of 297mm page)
       const startX = 15;
       const startY = 54.5;
-      const rowHeight = 8;
+      const rowHeight = 7.5;
 
       // Draw header backgrounds
       doc.setFillColor(30, 41, 59); // Slate-800
@@ -570,7 +602,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.setFontSize(8.5);
       doc.setTextColor(255, 255, 255);
 
-      const headers = ['Hora', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+      const headers = ['Hora', 'Lunes', 'Martes', 'MiÃ©rcoles', 'Jueves', 'Viernes', 'SÃ¡bado'];
       let currentX = startX;
       headers.forEach((hdr, idx) => {
         const w = colWidths[idx];
@@ -580,7 +612,9 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
 
       // 3. Grid Rows
       const numSlots = END_HOUR - START_HOUR;
-      const slotHeight = numSlots > 12 ? 10.4 : 11.4; // Dynamically adjust slot height to fit on A4 Landscape
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const bottomMargin = 7;
+      const slotHeight = Math.min(11.4, (pageHeight - startY - rowHeight - bottomMargin) / numSlots);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -622,17 +656,19 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       horarios.forEach((h) => {
         const dStart = new Date(h.horaInicio);
         const dFin = new Date(h.horaFin);
-        const startHour = dStart.getUTCHours();
-        const endHour = dFin.getUTCHours();
+        const startMinutes = dStart.getUTCHours() * 60 + dStart.getUTCMinutes();
+        const endMinutes = dFin.getUTCHours() * 60 + dFin.getUTCMinutes();
 
         const dayIndex = DIAS.indexOf(h.dia);
         if (dayIndex === -1) return;
 
-        const startIndex = Math.max(0, startHour - START_HOUR);
-        const endIndex = Math.min(numSlots, endHour - START_HOUR);
-        const rowspan = endIndex - startIndex;
+        const calendarStartMinutes = START_HOUR * 60;
+        const calendarEndMinutes = END_HOUR * 60;
+        const clampedStart = Math.max(startMinutes, calendarStartMinutes);
+        const clampedEnd = Math.min(endMinutes, calendarEndMinutes);
+        const durationSlots = (clampedEnd - clampedStart) / 60;
 
-        if (rowspan > 0) {
+        if (durationSlots > 0) {
           // Calculate overlapping classes for this specific class
           const hStart = dStart.getTime();
           const hEnd = dFin.getTime();
@@ -655,8 +691,8 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           const finalX = cellX + index * subColWidth;
           const finalW = subColWidth;
 
-          const cellY = startY + rowHeight + startIndex * slotHeight;
-          const cellH = rowspan * slotHeight;
+          const cellY = startY + rowHeight + ((clampedStart - calendarStartMinutes) / 60) * slotHeight;
+          const cellH = durationSlots * slotHeight;
 
           const hue = getCourseHue(h.curso.nombre);
           const isLab = h.tipoCurso.toLowerCase() === 'laboratorio';
@@ -664,7 +700,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           const borderColor = hslToRgb(hue, 70, 82);
           const textColor = hslToRgb(hue, 90, 20); // soft dark text for high contrast print
 
-          const pad = 0.8;
+          const pad = 0.7;
           // Premium rounded background
           doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
           doc.roundedRect(finalX + pad, cellY + pad, finalW - 2 * pad, cellH - 2 * pad, 1.2, 1.2, 'F');
@@ -675,29 +711,27 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           doc.roundedRect(finalX + pad, cellY + pad, finalW - 2 * pad, cellH - 2 * pad, 1.2, 1.2, 'S');
 
           // Configure font size dynamically based on division of column to avoid overflow
-          const fontTitleSize = total > 2 ? 5.2 : (total > 1 ? 6.2 : 7.2);
-          const fontContentSize = total > 2 ? 4.5 : (total > 1 ? 5.2 : 6.0);
-          const leadingOffset = total > 2 ? 2.2 : (total > 1 ? 2.6 : 3.2);
-
-          const isRowspanShort = rowspan === 1;
-          const formatTeacherName = (fullName: string) => {
-            const parts = fullName.trim().split(/\s+/);
-            if (parts.length <= 1) return fullName;
-            return `${parts[0]} ${parts[1].charAt(0)}.`;
-          };
+          const isCompactBlock = cellH <= 11.5 || finalW < 24;
+          const fontTitleSize = isCompactBlock ? (total > 2 ? 4.5 : 5.2) : (total > 2 ? 5.2 : (total > 1 ? 6.2 : 7.2));
+          const fontContentSize = isCompactBlock ? (total > 2 ? 4.0 : 4.6) : (total > 2 ? 4.5 : (total > 1 ? 5.2 : 6.0));
+          const leadingOffset = isCompactBlock ? (total > 2 ? 1.9 : 2.25) : (total > 2 ? 2.2 : (total > 1 ? 2.6 : 3.2));
 
           // Draw text content
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(fontTitleSize);
           doc.setTextColor(textColor[0], textColor[1], textColor[2]);
 
-          const courseNameText = (isRowspanShort && h.grupo)
-            ? `${h.curso.nombre} (G${h.grupo.replace(/grupo/gi, '').trim()})`.toUpperCase()
-            : h.curso.nombre.toUpperCase();
+          const groupLabel = normalizeGroupLabel(h.grupo);
+          const baseCourseName = h.curso.codigo || h.curso.nombre;
+          const courseNameText = (isCompactBlock && groupLabel)
+            ? `${baseCourseName} (${groupLabel})`.toUpperCase()
+            : baseCourseName.toUpperCase();
           const availableWidth = finalW - (2 * pad + 1.5); // Allow slightly more width for center alignment
           const centerX = finalX + finalW / 2;
 
-          const wrappedName = doc.splitTextToSize(courseNameText, availableWidth);
+          const wrappedName = isCompactBlock
+            ? [truncateText(courseNameText, total > 2 ? 12 : 20)]
+            : doc.splitTextToSize(courseNameText, availableWidth).slice(0, 2);
           doc.text(wrappedName, centerX, cellY + pad + leadingOffset, { align: 'center' });
 
           // Calculate offset after course name wrapping
@@ -718,11 +752,12 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(fontContentSize);
 
-          if (isRowspanShort) {
+          if (isCompactBlock) {
             const teacherShort = formatTeacherName(h.docente.nombre).toUpperCase();
-            const comboStr = `P: ${teacherShort} | A: ${h.aula.nombre.toUpperCase()}`;
+            const aulaShort = truncateText(h.aula.nombre.toUpperCase(), total > 2 ? 7 : 12);
+            const comboStr = `P: ${teacherShort} | A: ${aulaShort}`;
             const wrappedCombo = doc.splitTextToSize(comboStr, availableWidth);
-            doc.text(wrappedCombo, centerX, timeY + leadingOffset, { align: 'center' });
+            doc.text(wrappedCombo.slice(0, 1), centerX, timeY + leadingOffset, { align: 'center' });
           } else {
             const teacherStr = `Prof: ${h.docente.nombre.toUpperCase()}`;
             const aulaStr = `Aula: ${h.aula.nombre.toUpperCase()}`;
@@ -760,7 +795,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
   };
 
   return (
-    <div className="w-full bg-white dark:bg-[#0f0f1a] rounded-[2rem] border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden flex flex-col h-[900px]">
+    <div className="w-full bg-white dark:bg-[#0f0f1a] rounded-[2rem] border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden flex flex-col h-[1000px]">
       <div className="flex-none p-6 border-b border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h3 className="text-xl font-bold text-foreground dark:text-white flex items-center gap-2">
@@ -768,7 +803,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
             Vista Semanal de Horarios (7:00 AM - 8:00 PM)
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Visualización panorámica de las asignaciones de Lunes a Sábado.
+            VisualizaciÃ³n panorÃ¡mica de las asignaciones de Lunes a SÃ¡bado.
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
@@ -806,7 +841,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
 
 
 
-        <div className="min-w-[1000px] h-[800px] flex">
+        <div className="min-w-[1000px] h-[900px] flex">
           {/* Y-Axis: Time Slots */}
           <div className="w-20 flex-none border-r border-gray-200 dark:border-white/10 relative">
             {timeSlots.map((time, index) => (

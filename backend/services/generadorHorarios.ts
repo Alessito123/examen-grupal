@@ -1,5 +1,6 @@
 import { Categoria, TipoCurso, Dia } from '@prisma/client';
 import prisma from '../prisma/client';
+import { BLOQUES_HORARIOS, hasTimeOverlap, toMinutes } from '../config/schedule';
 
 // Prioridad de categorías (Menor número = Mayor prioridad)
 const PRIORIDAD_CATEGORIA: Record<Categoria, number> = {
@@ -11,15 +12,6 @@ const PRIORIDAD_CATEGORIA: Record<Categoria, number> = {
 };
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'] as Dia[];
-const BLOQUES_HORARIOS = [
-  { inicio: '07:00', fin: '09:00' },
-  { inicio: '09:00', fin: '11:00' },
-  { inicio: '11:00', fin: '13:00' },
-  { inicio: '13:00', fin: '15:00' },
-  { inicio: '15:00', fin: '17:00' },
-  { inicio: '17:00', fin: '19:00' },
-];
-
 function shuffleArray<T>(array: T[]): T[] {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -67,9 +59,28 @@ export async function generarHorariosAutomaticamente(semestre: string) {
   const bloquesOrdenados = shuffleArray(BLOQUES_HORARIOS);
 
   const horariosGenerados = [];
-  const ocupacionDocente: Record<string, Set<string>> = {}; // docenteId -> "Dia-Bloque"
-  const ocupacionAula: Record<string, Set<string>> = {}; // aulaId -> "Dia-Bloque"
-  const ocupacionCiclo: Record<string, Set<string>> = {}; // ciclo -> "Dia-Bloque"
+  const ocupacionDocente: Record<string, Array<{ inicio: number; fin: number }>> = {};
+  const ocupacionAula: Record<string, Array<{ inicio: number; fin: number }>> = {};
+  const ocupacionCiclo: Record<string, Array<{ inicio: number; fin: number }>> = {};
+
+  const hasOcupacionOverlap = (
+    store: Record<string, Array<{ inicio: number; fin: number }>>,
+    key: string,
+    inicio: number,
+    fin: number
+  ) => {
+    return (store[key] || []).some((bloque) => hasTimeOverlap(inicio, fin, bloque.inicio, bloque.fin));
+  };
+
+  const addOcupacion = (
+    store: Record<string, Array<{ inicio: number; fin: number }>>,
+    key: string,
+    inicio: number,
+    fin: number
+  ) => {
+    if (!store[key]) store[key] = [];
+    store[key].push({ inicio, fin });
+  };
 
   // 4. Asignar cursos a docentes (distribuimos equitativamente)
   let cursoIndex = 0;
@@ -120,11 +131,12 @@ export async function generarHorariosAutomaticamente(semestre: string) {
       for (const dia of diasOrdenados) {
         if (asignado) break;
         for (const bloque of bloquesOrdenados) {
-          const key = `${dia}-${bloque.inicio}`;
+          const bloqueInicioMin = toMinutes(bloque.inicio);
+          const bloqueFinMin = toMinutes(bloque.fin);
           
           // Verificar disponibilidad del docente
-          if (!ocupacionDocente[docente.id]) ocupacionDocente[docente.id] = new Set();
-          if (ocupacionDocente[docente.id].has(key)) continue;
+          const docenteKey = `${docente.id}-${dia}`;
+          if (hasOcupacionOverlap(ocupacionDocente, docenteKey, bloqueInicioMin, bloqueFinMin)) continue;
 
           // Validar Disponibilidad guardada del Docente
           if (disponibilidadSlots.length > 0) {
@@ -146,14 +158,14 @@ export async function generarHorariosAutomaticamente(semestre: string) {
 
           // Validar no traslape por Ciclo (generar por ciclo)
           const cicloKey = String(curso.ciclo || 1);
-          if (!ocupacionCiclo[cicloKey]) ocupacionCiclo[cicloKey] = new Set();
-          if (ocupacionCiclo[cicloKey].has(key)) continue; // Si ya hay clase del mismo ciclo a esta hora, saltar
+          const cicloDiaKey = `${cicloKey}-${dia}`;
+          if (hasOcupacionOverlap(ocupacionCiclo, cicloDiaKey, bloqueInicioMin, bloqueFinMin)) continue; // Si ya hay clase del mismo ciclo a esta hora, saltar
 
           // Buscar aula disponible del tipo correcto
           const aulaDisponible = aulas.find(a => {
             if (a.tipo !== curso.tipo) return false;
-            if (!ocupacionAula[a.id]) ocupacionAula[a.id] = new Set();
-            return !ocupacionAula[a.id].has(key);
+            const aulaKey = `${a.id}-${dia}`;
+            return !hasOcupacionOverlap(ocupacionAula, aulaKey, bloqueInicioMin, bloqueFinMin);
           });
 
           if (aulaDisponible) {
@@ -175,12 +187,11 @@ export async function generarHorariosAutomaticamente(semestre: string) {
             });
 
             horariosGenerados.push(nuevoHorario);
-            ocupacionDocente[docente.id].add(key);
-            if (!ocupacionAula[aulaDisponible.id]) ocupacionAula[aulaDisponible.id] = new Set();
-            ocupacionAula[aulaDisponible.id].add(key);
+            addOcupacion(ocupacionDocente, docenteKey, bloqueInicioMin, bloqueFinMin);
+            addOcupacion(ocupacionAula, `${aulaDisponible.id}-${dia}`, bloqueInicioMin, bloqueFinMin);
             
             // Ocupar slot del ciclo
-            ocupacionCiclo[cicloKey].add(key);
+            addOcupacion(ocupacionCiclo, cicloDiaKey, bloqueInicioMin, bloqueFinMin);
             
             asignado = true;
             cursosAsignados++;

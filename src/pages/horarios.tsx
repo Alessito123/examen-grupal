@@ -8,6 +8,7 @@ import GestionHorarios from '../components/GestionHorarios';
 import ModalCrearHorario from '../components/ModalCrearHorario';
 import CalendarioHorarios from '../components/CalendarioHorarios';
 import { useAuth } from '../hooks/useAuth';
+import { SCHEDULE_BLOCKS, SCHEDULE_DAYS } from '../utils/scheduleConfig';
 
 const getCicloRomano = (ciclo: number | null): string => {
   if (!ciclo) return '-';
@@ -614,21 +615,8 @@ const DisponibilidadDocentesAdmin: React.FC<{ docentes: any[] }> = ({ docentes }
     }
   };
 
-  const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
-  const BLOQUES = [
-    { label: '07:00 AM - 08:00 AM', value: '07:00-08:00' },
-    { label: '08:00 AM - 09:00 AM', value: '08:00-09:00' },
-    { label: '09:00 AM - 10:00 AM', value: '09:00-10:00' },
-    { label: '10:00 AM - 11:00 AM', value: '10:00-11:00' },
-    { label: '11:00 AM - 12:00 PM', value: '11:00-12:00' },
-    { label: '12:00 PM - 01:00 PM', value: '12:00-13:00' },
-    { label: '01:00 PM - 02:00 PM', value: '13:00-14:00' },
-    { label: '02:00 PM - 03:00 PM', value: '14:00-15:00' },
-    { label: '03:00 PM - 04:00 PM', value: '15:00-16:00' },
-    { label: '04:00 PM - 05:00 PM', value: '16:00-17:00' },
-    { label: '05:00 PM - 06:00 PM', value: '17:00-18:00' },
-    { label: '06:00 PM - 07:00 PM', value: '18:00-19:00' }
-  ];
+  const DIAS: readonly string[] = SCHEDULE_DAYS;
+  const BLOQUES = SCHEDULE_BLOCKS;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -691,14 +679,14 @@ const DisponibilidadDocentesAdmin: React.FC<{ docentes: any[] }> = ({ docentes }
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full min-w-[900px] border-collapse table-fixed">
                 <thead>
                   <tr>
-                    <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/5 w-48">
+                    <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/5 w-44">
                       Bloque Horario
                     </th>
                     {DIAS.map((dia) => (
-                      <th key={dia} className="p-4 text-center text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/5">
+                      <th key={dia} className="p-3 text-center text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/5">
                         {dia}
                       </th>
                     ))}
@@ -707,23 +695,23 @@ const DisponibilidadDocentesAdmin: React.FC<{ docentes: any[] }> = ({ docentes }
                 <tbody>
                   {BLOQUES.map((bloque) => (
                     <tr key={bloque.value} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
-                      <td className="py-2 px-4 font-semibold text-xs border-b border-gray-100 dark:border-white/5 flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                      <td className="py-3 px-3 font-semibold text-xs border-b border-gray-100 dark:border-white/5 flex items-center gap-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                         <Clock size={12} className="text-gray-400" />
                         {bloque.label}
                       </td>
                       {DIAS.map((dia) => {
                         const active = isSlotSelected(dia, bloque.value);
                         return (
-                          <td key={dia} className="p-1 border-b border-gray-100 dark:border-white/5">
+                          <td key={dia} className="p-1.5 border-b border-gray-100 dark:border-white/5">
                             <div
-                              className={`w-full py-2.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all select-none ${active
+                              className={`w-full min-h-[42px] py-2 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all select-none ${active
                                   ? 'bg-gradient-to-tr from-purple-600 to-blue-600 text-white shadow-md shadow-purple-600/20'
                                   : 'bg-gray-50 dark:bg-white/5 text-gray-400/40 dark:text-gray-600/40'
                                 }`}
                             >
                               {active ? (
                                 <>
-                                  <Check size={14} className="text-white" />
+                                  <Check size={13} className="text-white" />
                                   <span className="text-[9px] uppercase font-bold tracking-widest text-white/95">Disponible</span>
                                 </>
                               ) : (

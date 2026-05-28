@@ -5,23 +5,10 @@ import { Clock, Calendar, Check, Save, RotateCcw, AlertCircle, Info, Sparkles } 
 import DashboardLayout from '../layouts/DashboardLayout';
 import { useAuth } from '../hooks/useAuth';
 import { trpc } from '../utils/trpc';
+import { SCHEDULE_BLOCKS, SCHEDULE_DAYS } from '../utils/scheduleConfig';
 
-const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'] as const;
-
-const BLOQUES = [
-  { label: '07:00 AM - 08:00 AM', value: '07:00-08:00' },
-  { label: '08:00 AM - 09:00 AM', value: '08:00-09:00' },
-  { label: '09:00 AM - 10:00 AM', value: '09:00-10:00' },
-  { label: '10:00 AM - 11:00 AM', value: '10:00-11:00' },
-  { label: '11:00 AM - 12:00 PM', value: '11:00-12:00' },
-  { label: '12:00 PM - 01:00 PM', value: '12:00-13:00' },
-  { label: '01:00 PM - 02:00 PM', value: '13:00-14:00' },
-  { label: '02:00 PM - 03:00 PM', value: '14:00-15:00' },
-  { label: '03:00 PM - 04:00 PM', value: '15:00-16:00' },
-  { label: '04:00 PM - 05:00 PM', value: '16:00-17:00' },
-  { label: '05:00 PM - 06:00 PM', value: '17:00-18:00' },
-  { label: '06:00 PM - 07:00 PM', value: '18:00-19:00' }
-] as const;
+const DIAS: readonly string[] = SCHEDULE_DAYS;
+const BLOQUES = SCHEDULE_BLOCKS;
 
 const getSemestresDinamicos = (): string[] => {
   const currentYear = new Date().getFullYear();
@@ -153,28 +140,35 @@ const DisponibilidadPage: React.FC = () => {
   const prefillTypical = () => {
     if (hasSchedules) return;
     // Definimos varios patrones realistas de disponibilidad en bloques de 1 hora
+    const allBlocks = BLOQUES.map((bloque) => bloque.value);
+    const morningBlocks = BLOQUES.filter((bloque) => bloque.startHour < 13).map((bloque) => bloque.value);
+    const afternoonBlocks = BLOQUES.filter((bloque) => bloque.startHour >= 13).map((bloque) => bloque.value);
+    const middleBlocks = BLOQUES
+      .filter((bloque) => bloque.startHour >= 9 && bloque.endHour <= 17)
+      .map((bloque) => bloque.value);
+
     const patrones = [
       // Patrón 1: Mañanas rotativas (07:00 a 13:00)
       () => {
         const dias = Math.random() > 0.5 ? ['Lunes', 'Miercoles', 'Viernes'] : ['Martes', 'Jueves', 'Sabado'];
-        const bloques = ['07:00-08:00', '08:00-09:00', '09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00'];
+        const bloques = morningBlocks;
         const slots: { dia: string; bloque: string }[] = [];
         dias.forEach(d => {
-          const count = Math.random() > 0.5 ? 6 : 4;
-          const startIdx = Math.floor(Math.random() * (6 - count + 1));
+          const count = Math.random() > 0.5 ? morningBlocks.length : 4;
+          const startIdx = Math.floor(Math.random() * (bloques.length - count + 1));
           const selected = bloques.slice(startIdx, startIdx + count);
           selected.forEach(b => slots.push({ dia: d, bloque: b }));
         });
         return { slots, desc: 'Cargada propuesta de mañanas con bloques rotativos en días clave.' };
       },
-      // Patrón 2: Tardes rotativas (13:00 a 19:00)
+      // Patrón 2: Tardes rotativas (13:00 a 20:00)
       () => {
         const dias = Math.random() > 0.5 ? ['Lunes', 'Miercoles', 'Viernes'] : ['Martes', 'Jueves', 'Sabado'];
-        const bloques = ['13:00-14:00', '14:00-15:00', '15:00-16:00', '16:00-17:00', '17:00-18:00', '18:00-19:00'];
+        const bloques = afternoonBlocks;
         const slots: { dia: string; bloque: string }[] = [];
         dias.forEach(d => {
-          const count = Math.random() > 0.5 ? 6 : 4;
-          const startIdx = Math.floor(Math.random() * (6 - count + 1));
+          const count = Math.random() > 0.5 ? 5 : 4;
+          const startIdx = Math.floor(Math.random() * (bloques.length - count + 1));
           const selected = bloques.slice(startIdx, startIdx + count);
           selected.forEach(b => slots.push({ dia: d, bloque: b }));
         });
@@ -184,13 +178,10 @@ const DisponibilidadPage: React.FC = () => {
       () => {
         const todosDias = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'];
         const elegidos = [...todosDias].sort(() => Math.random() - 0.5).slice(0, 2);
-        const bloques = [
-          '07:00-08:00', '08:00-09:00', '09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00',
-          '13:00-14:00', '14:00-15:00', '15:00-16:00', '16:00-17:00', '17:00-18:00', '18:00-19:00'
-        ];
+        const bloques = allBlocks;
         const slots: { dia: string; bloque: string }[] = [];
         elegidos.forEach(d => {
-          const selected = bloques.slice(0, 10);
+          const selected = bloques;
           selected.forEach(b => slots.push({ dia: d, bloque: b }));
         });
         return { slots, desc: 'Cargada propuesta concentrada en 2 días completos.' };
@@ -202,27 +193,20 @@ const DisponibilidadPage: React.FC = () => {
         const tardes = mananas[0] === 'Lunes' ? ['Martes', 'Jueves'] : ['Lunes', 'Miercoles'];
         
         mananas.forEach(d => {
-          slots.push({ dia: d, bloque: '07:00-08:00' });
-          slots.push({ dia: d, bloque: '08:00-09:00' });
-          slots.push({ dia: d, bloque: '09:00-10:00' });
-          slots.push({ dia: d, bloque: '10:00-11:00' });
+          morningBlocks.slice(0, 4).forEach((bloque) => slots.push({ dia: d, bloque }));
           if (Math.random() > 0.5) {
-            slots.push({ dia: d, bloque: '11:00-12:00' });
-            slots.push({ dia: d, bloque: '12:00-13:00' });
+            morningBlocks.slice(4).forEach((bloque) => slots.push({ dia: d, bloque }));
           }
         });
         tardes.forEach(d => {
-          slots.push({ dia: d, bloque: '13:00-14:00' });
-          slots.push({ dia: d, bloque: '14:00-15:00' });
-          slots.push({ dia: d, bloque: '15:00-16:00' });
-          slots.push({ dia: d, bloque: '16:00-17:00' });
+          afternoonBlocks.slice(0, 4).forEach((bloque) => slots.push({ dia: d, bloque }));
         });
         return { slots, desc: 'Cargada propuesta mixta de mañanas y tardes intercaladas.' };
       },
       // Patrón 5: Bloques de contingencia (Bloques intermedios flexibles)
       () => {
         const slots: { dia: string; bloque: string }[] = [];
-        const bloques = ['09:00-10:00', '10:00-11:00', '11:00-12:00', '12:00-13:00', '13:00-14:00', '14:00-15:00', '15:00-16:00', '16:00-17:00'];
+        const bloques = middleBlocks;
         const dias = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
         dias.forEach(d => {
           const count = Math.random() > 0.5 ? 4 : 2;
@@ -415,16 +399,16 @@ const DisponibilidadPage: React.FC = () => {
         </div>
 
         {/* Interactive Grid Container */}
-        <div className="bg-white dark:bg-[#0f0f1a] border border-gray-200 dark:border-white/5 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+        <div className="bg-white dark:bg-[#0f0f1a] border border-gray-200 dark:border-white/5 rounded-3xl p-4 md:p-6 shadow-xl relative overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+            <table className="w-full min-w-[900px] border-collapse table-fixed">
               <thead>
                 <tr>
-                  <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/5 w-48">
+                  <th className="p-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/5 w-44">
                     Bloque Horario
                   </th>
                   {DIAS.map((dia) => (
-                    <th key={dia} className="p-4 text-center text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/5">
+                    <th key={dia} className="p-3 text-center text-xs font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100 dark:border-white/5">
                       {dia}
                     </th>
                   ))}
@@ -433,18 +417,18 @@ const DisponibilidadPage: React.FC = () => {
               <tbody>
                 {BLOQUES.map((bloque) => (
                   <tr key={bloque.value} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors">
-                    <td className="p-4 font-semibold text-sm border-b border-gray-100 dark:border-white/5 flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                      <Clock size={14} className="text-gray-400" />
+                    <td className="py-3 px-3 font-semibold text-xs border-b border-gray-100 dark:border-white/5 flex items-center gap-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      <Clock size={13} className="text-gray-400" />
                       {bloque.label}
                     </td>
                     {DIAS.map((dia) => {
                       const active = isSelected(dia, bloque.value);
                       return (
-                        <td key={dia} className="p-2 border-b border-gray-100 dark:border-white/5">
+                        <td key={dia} className="p-1.5 border-b border-gray-100 dark:border-white/5">
                           <button
                             onClick={() => toggleSlot(dia, bloque.value)}
                             disabled={hasSchedules}
-                            className={`w-full py-4 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all ${
+                            className={`w-full min-h-[44px] py-2 rounded-xl flex flex-col items-center justify-center gap-0.5 transition-all ${
                               active
                                 ? 'bg-gradient-to-tr from-purple-600 to-blue-600 text-white shadow-md shadow-purple-600/20'
                                 : 'bg-gray-50 hover:bg-gray-100 dark:bg-white/5 dark:hover:bg-white/10 text-gray-400 dark:text-gray-600 hover:text-gray-600 dark:hover:text-gray-400'
@@ -452,13 +436,13 @@ const DisponibilidadPage: React.FC = () => {
                           >
                             {active ? (
                               <>
-                                <Check size={16} className="text-white" />
-                                <span className="text-[10px] uppercase font-bold tracking-widest text-white/95">Disponible</span>
+                                <Check size={14} className="text-white" />
+                                <span className="text-[9px] uppercase font-bold tracking-widest text-white/95">Disponible</span>
                               </>
                             ) : (
                               <>
                                 <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                <span className="text-[10px] uppercase font-bold tracking-widest opacity-40">Libre</span>
+                                <span className="text-[9px] uppercase font-bold tracking-widest opacity-40">Libre</span>
                               </>
                             )}
                           </button>
