@@ -332,7 +332,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
               <input 
                 type="time" 
                 min="07:00"
-                max="19:00"
+                max="20:00"
                 required
                 value={formData.horaInicio}
                 onChange={(e) => setFormData({...formData, horaInicio: e.target.value})}
@@ -347,7 +347,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
               <input 
                 type="time" 
                 min="07:00"
-                max="19:00"
+                max="20:00"
                 required
                 value={formData.horaFin}
                 onChange={(e) => setFormData({...formData, horaFin: e.target.value})}
@@ -355,9 +355,9 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
               />
             </div>
             
-            {!(formData.horaInicio >= '07:00' && formData.horaInicio <= '19:00' && formData.horaFin >= '07:00' && formData.horaFin <= '19:00' && formData.horaInicio < formData.horaFin) && (
+            {!(formData.horaInicio >= '07:00' && formData.horaInicio <= '20:00' && formData.horaFin >= '07:00' && formData.horaFin <= '20:00' && formData.horaInicio < formData.horaFin) && (
               <p className="text-[10px] text-red-500 font-bold uppercase md:col-span-2 text-center animate-pulse">
-                * Los horarios deben estar entre 07:00 y 19:00. La hora de inicio debe ser anterior a la hora de fin.
+                * Los horarios deben estar entre 07:00 y 20:00. La hora de inicio debe ser anterior a la hora de fin.
               </p>
             )}
           </div>
@@ -419,7 +419,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
             </button>
             <button 
               type="submit"
-              disabled={createMutation.isPending || updateMutation.isPending || conflictos?.hasConflict || !(formData.horaInicio >= '07:00' && formData.horaInicio <= '19:00' && formData.horaFin >= '07:00' && formData.horaFin <= '19:00' && formData.horaInicio < formData.horaFin)}
+              disabled={createMutation.isPending || updateMutation.isPending || conflictos?.hasConflict || !(formData.horaInicio >= '07:00' && formData.horaInicio <= '20:00' && formData.horaFin >= '07:00' && formData.horaFin <= '20:00' && formData.horaInicio < formData.horaFin)}
               className="flex-[2] py-4 rounded-2xl bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-600/20 transition-all"
             >
               {horarioToEdit 

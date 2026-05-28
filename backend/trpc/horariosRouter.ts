@@ -13,8 +13,8 @@ function checkTimeRange(inicio: Date, fin: Date) {
   const startDecimal = startHour + startMin / 60;
   const endDecimal = endHour + endMin / 60;
 
-  if (startDecimal < 7 || endDecimal > 19) {
-    throw new Error('Los horarios solo pueden registrarse entre las 7:00 AM y las 7:00 PM.');
+  if (startDecimal < 7 || endDecimal > 20) {
+    throw new Error('Los horarios solo pueden registrarse entre las 7:00 AM y las 8:00 PM.');
   }
 }
 

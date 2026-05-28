@@ -47,7 +47,7 @@ interface CalendarioHorariosProps {
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
 const START_HOUR = 7;
-const END_HOUR = 19;
+const END_HOUR = 20;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
 
 const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selectedCiclo, selectedSemestre }) => {
@@ -579,8 +579,8 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       });
 
       // 3. Grid Rows
-      const numSlots = END_HOUR - START_HOUR; // 19 - 7 = 12 slots
-      const slotHeight = 11.4; // Updated slotHeight to fit perfectly on A4 Landscape
+      const numSlots = END_HOUR - START_HOUR;
+      const slotHeight = numSlots > 12 ? 10.4 : 11.4; // Dynamically adjust slot height to fit on A4 Landscape
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -679,12 +679,21 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           const fontContentSize = total > 2 ? 4.5 : (total > 1 ? 5.2 : 6.0);
           const leadingOffset = total > 2 ? 2.2 : (total > 1 ? 2.6 : 3.2);
 
+          const isRowspanShort = rowspan === 1;
+          const formatTeacherName = (fullName: string) => {
+            const parts = fullName.trim().split(/\s+/);
+            if (parts.length <= 1) return fullName;
+            return `${parts[0]} ${parts[1].charAt(0)}.`;
+          };
+
           // Draw text content
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(fontTitleSize);
           doc.setTextColor(textColor[0], textColor[1], textColor[2]);
 
-          const courseNameText = h.curso.nombre.toUpperCase();
+          const courseNameText = (isRowspanShort && h.grupo)
+            ? `${h.curso.nombre} (G${h.grupo.replace(/grupo/gi, '').trim()})`.toUpperCase()
+            : h.curso.nombre.toUpperCase();
           const availableWidth = finalW - (2 * pad + 1.5); // Allow slightly more width for center alignment
           const centerX = finalX + finalW / 2;
 
@@ -700,7 +709,8 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           doc.setTextColor(71, 85, 105);
 
           const tStart = `${dStart.getUTCHours().toString().padStart(2, '0')}:${dStart.getUTCMinutes().toString().padStart(2, '0')}`;
-          const tFin = `${dFin.getUTCHours().toString().padStart(2, '0')}:${dFin.getUTCMinutes().toString().padStart(2, '0')}`;
+          const dFinTime = new Date(h.horaFin);
+          const tFin = `${dFinTime.getUTCHours().toString().padStart(2, '0')}:${dFinTime.getUTCMinutes().toString().padStart(2, '0')}`;
           const timeRangeStr = `${tStart}-${tFin} (${isLab ? 'Lab' : 'Teo'})`;
 
           doc.text(timeRangeStr, centerX, timeY, { align: 'center' });
@@ -708,24 +718,31 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           doc.setFont('helvetica', 'bold');
           doc.setFontSize(fontContentSize);
 
-          const teacherStr = `Prof: ${h.docente.nombre.toUpperCase()}`;
-          const aulaStr = `Aula: ${h.aula.nombre.toUpperCase()}`;
+          if (isRowspanShort) {
+            const teacherShort = formatTeacherName(h.docente.nombre).toUpperCase();
+            const comboStr = `P: ${teacherShort} | A: ${h.aula.nombre.toUpperCase()}`;
+            const wrappedCombo = doc.splitTextToSize(comboStr, availableWidth);
+            doc.text(wrappedCombo, centerX, timeY + leadingOffset, { align: 'center' });
+          } else {
+            const teacherStr = `Prof: ${h.docente.nombre.toUpperCase()}`;
+            const aulaStr = `Aula: ${h.aula.nombre.toUpperCase()}`;
 
-          const wrappedTeacher = doc.splitTextToSize(teacherStr, availableWidth);
-          doc.text(wrappedTeacher, centerX, timeY + leadingOffset, { align: 'center' });
+            const wrappedTeacher = doc.splitTextToSize(teacherStr, availableWidth);
+            doc.text(wrappedTeacher, centerX, timeY + leadingOffset, { align: 'center' });
 
-          const teacherLines = wrappedTeacher.length;
-          const aulaY = timeY + leadingOffset + teacherLines * (leadingOffset - 0.2);
+            const teacherLines = wrappedTeacher.length;
+            const aulaY = timeY + leadingOffset + teacherLines * (leadingOffset - 0.2);
 
-          const wrappedAula = doc.splitTextToSize(aulaStr, availableWidth);
-          doc.text(wrappedAula, centerX, aulaY, { align: 'center' });
+            const wrappedAula = doc.splitTextToSize(aulaStr, availableWidth);
+            doc.text(wrappedAula, centerX, aulaY, { align: 'center' });
 
-          if (h.grupo) {
-            const grupoStr = h.grupo.toUpperCase();
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(fontContentSize + 0.2);
-            doc.setTextColor(220, 38, 38); // Bold red text for the group!
-            doc.text(grupoStr, centerX, aulaY + leadingOffset, { align: 'center' });
+            if (h.grupo) {
+              const grupoStr = h.grupo.toUpperCase();
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(fontContentSize + 0.2);
+              doc.setTextColor(220, 38, 38); // Bold red text for the group!
+              doc.text(grupoStr, centerX, aulaY + leadingOffset, { align: 'center' });
+            }
           }
         }
       });
@@ -748,7 +765,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
         <div>
           <h3 className="text-xl font-bold text-foreground dark:text-white flex items-center gap-2">
             <Clock className="text-purple-600" />
-            Vista Semanal de Horarios (7:00 AM - 7:00 PM)
+            Vista Semanal de Horarios (7:00 AM - 8:00 PM)
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
             Visualización panorámica de las asignaciones de Lunes a Sábado.
@@ -854,34 +871,80 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
                       '--course-text-dark': `hsl(${hue}, 85%, 85%)`,
                     } as React.CSSProperties;
 
+                    const dStart = new Date(horario.horaInicio);
+                    const dFin = new Date(horario.horaFin);
+                    const startHrs = dStart.getUTCHours() + dStart.getUTCMinutes() / 60;
+                    const finHrs = dFin.getUTCHours() + dFin.getUTCMinutes() / 60;
+                    const durationHours = Math.max(0.5, finHrs - startHrs);
+                    const isShort = durationHours <= 1.1;
+
+                    const formatTeacherName = (fullName: string) => {
+                      const parts = fullName.trim().split(/\s+/);
+                      if (parts.length <= 1) return fullName;
+                      return `${parts[0]} ${parts[1].charAt(0)}.`;
+                    };
+
                     return (
                       <motion.div
                         key={horario.id}
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="absolute rounded-xl border p-2 overflow-hidden shadow-sm hover:shadow-md hover:z-20 transition-all dark:bg-[var(--course-bg-dark)] dark:border-[var(--course-border-dark)] dark:text-[var(--course-text-dark)]"
+                        className={`absolute rounded-xl border overflow-hidden shadow-sm hover:shadow-md hover:z-20 transition-all dark:bg-[var(--course-bg-dark)] dark:border-[var(--course-border-dark)] dark:text-[var(--course-text-dark)] ${isShort ? 'p-1.5' : 'p-2'}`}
                         style={styles}
                       >
                         <div className="h-full flex flex-col text-xs leading-tight">
-                          <div className="font-bold truncate" title={horario.curso.nombre}>
-                            {horario.curso.nombre}
-                          </div>
-                          <div className="opacity-80 font-medium text-[10px] uppercase mb-1">
-                            {formatTime(horario.horaInicio)} - {formatTime(horario.horaFin)} ({horario.tipoCurso})
-                          </div>
-                          <div className="mt-auto space-y-0.5 text-[10px]">
-                            <div className="flex items-center gap-1 truncate" title={horario.docente.nombre}>
-                              <User size={10} className="shrink-0" /> {horario.docente.nombre}
-                            </div>
-                            <div className="flex items-center gap-1 truncate font-semibold" title={horario.aula.nombre}>
-                              <MapPin size={10} className="shrink-0" /> {horario.aula.nombre}
-                            </div>
-                            {horario.grupo && (
-                              <div className="text-[9px] font-extrabold text-red-600 dark:text-red-400 uppercase tracking-widest text-center mt-1 border-t border-dashed border-red-200/50 dark:border-red-500/20 pt-1">
-                                {horario.grupo}
+                          {isShort ? (
+                            <>
+                              {/* Compact Layout for short slots (e.g. 1 hour) to prevent overflow */}
+                              <div className="flex items-center justify-between gap-1 w-full overflow-hidden">
+                                <div className="font-bold truncate text-[11px]" title={horario.curso.nombre}>
+                                  {horario.curso.nombre}
+                                </div>
+                                {horario.grupo && (
+                                  <span className="text-[8px] font-extrabold text-red-600 dark:text-red-400 uppercase bg-red-100 dark:bg-red-950/40 px-1 rounded shrink-0 leading-none py-0.5">
+                                    G{horario.grupo.replace(/grupo/gi, '').trim()}
+                                  </span>
+                                )}
                               </div>
-                            )}
-                          </div>
+                              <div className="opacity-80 font-medium text-[9px] uppercase mt-0.5 mb-1 flex items-center justify-between">
+                                <span>{formatTime(horario.horaInicio)} - {formatTime(horario.horaFin)}</span>
+                                <span className="opacity-75 font-semibold text-[8px] bg-black/5 dark:bg-white/5 px-1 rounded shrink-0">{horario.tipoCurso === 'teoria' ? 'Teo' : 'Lab'}</span>
+                              </div>
+                              <div className="mt-auto pt-0.5 border-t border-dashed border-current/10 grid grid-cols-2 gap-1 text-[9px] leading-none">
+                                <div className="flex items-center gap-0.5 truncate" title={horario.docente.nombre}>
+                                  <User size={8} className="shrink-0 opacity-85" />
+                                  <span className="truncate font-medium">{formatTeacherName(horario.docente.nombre)}</span>
+                                </div>
+                                <div className="flex items-center gap-0.5 truncate font-semibold justify-end" title={horario.aula.nombre}>
+                                  <MapPin size={8} className="shrink-0 opacity-85" />
+                                  <span className="truncate">{horario.aula.nombre}</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {/* Standard Vertical Layout for longer slots */}
+                              <div className="font-bold truncate" title={horario.curso.nombre}>
+                                {horario.curso.nombre}
+                              </div>
+                              <div className="opacity-80 font-medium text-[10px] uppercase mb-1">
+                                {formatTime(horario.horaInicio)} - {formatTime(horario.horaFin)} ({horario.tipoCurso})
+                              </div>
+                              <div className="mt-auto space-y-0.5 text-[10px]">
+                                <div className="flex items-center gap-1 truncate" title={horario.docente.nombre}>
+                                  <User size={10} className="shrink-0" /> {horario.docente.nombre}
+                                </div>
+                                <div className="flex items-center gap-1 truncate font-semibold" title={horario.aula.nombre}>
+                                  <MapPin size={10} className="shrink-0" /> {horario.aula.nombre}
+                                </div>
+                                {horario.grupo && (
+                                  <div className="text-[9px] font-extrabold text-red-600 dark:text-red-400 uppercase tracking-widest text-center mt-1 border-t border-dashed border-red-200/50 dark:border-red-500/20 pt-1">
+                                    {horario.grupo}
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </motion.div>
                     );
