@@ -17,6 +17,7 @@ export class ReportService {
     const htmlContent = `
       <html>
         <head>
+          <meta charset="UTF-8">
           <style>
             body { font-family: sans-serif; }
             table { width: 100%; border-collapse: collapse; }

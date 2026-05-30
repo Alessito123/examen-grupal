@@ -299,7 +299,7 @@ const ReportesPage: React.FC = () => {
         doc.text('Distribución de Carga de Bloques Horarios por Día', 14, y);
         y += 8;
 
-        const dias = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+        const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
         const counts = dias.map(dia => ({
           dia,
           count: horarios?.filter((h: any) => h.dia === dia).length || 0

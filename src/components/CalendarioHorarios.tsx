@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, MapPin, User, BookOpen, FileSpreadsheet, Download, FileText, Eye } from 'lucide-react';
 import { jsPDF } from 'jspdf';
@@ -418,11 +418,11 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
 
       doc.setFontSize(8);
       doc.setTextColor(80, 80, 80);
-      doc.text("FACULTAD DE INGENIERÃA", textX, 18);
+      doc.text("FACULTAD DE INGENIERÍA", textX, 18);
 
       doc.setFontSize(7.5);
       doc.setFont('helvetica', 'normal');
-      doc.text("ESCUELA PROFESIONAL DE INGENIERÃA DE SISTEMAS", textX, 22);
+      doc.text("ESCUELA PROFESIONAL DE INGENIERÍA DE SISTEMAS", textX, 22);
 
       // Metadata on the left below the header
       let metaY = 28;
@@ -432,7 +432,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.text("ESCUELA:", 12, metaY);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(40, 40, 40);
-      doc.text("INGENIERÃA DE SISTEMAS", 26, metaY);
+      doc.text("INGENIERÍA DE SISTEMAS", 26, metaY);
 
       metaY += 4.5;
       doc.setFont('helvetica', 'bold');
@@ -442,7 +442,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.text(selectedCiclo || 'TODOS', 26, metaY);
 
       doc.setTextColor(120, 120, 120);
-      doc.text("SECCIÃ“N:", 45, metaY);
+      doc.text("SECCIÓN:", 45, metaY);
       doc.setTextColor(40, 40, 40);
       doc.text("A", 60, metaY);
 
@@ -456,7 +456,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       metaY += 4.5;
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(120, 120, 120);
-      doc.text("AÃ‘O ACADÃ‰MICO:", 12, metaY);
+      doc.text("AÑO ACADÉMICO:", 12, metaY);
       doc.setTextColor(40, 40, 40);
 
       let anioText = '2026';
@@ -499,7 +499,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       const sumColWidths = [7, 45, 50, 6, 6, 6, 6, 13, 38];
 
       let sumCurrentX = tblX;
-      const sumHeaders = ['NÂ°', 'DOCENTE', 'EXPERIENCIA CURRICULAR', 'T', 'P', 'L', 'G', 'T. HORAS', 'DPTO. ACAD.'];
+      const sumHeaders = ['N°', 'DOCENTE', 'EXPERIENCIA CURRICULAR', 'T', 'P', 'L', 'G', 'T. HORAS', 'DPTO. ACAD.'];
       sumHeaders.forEach((hdr, idx) => {
         const w = sumColWidths[idx];
         if (idx === 0 || idx >= 3 && idx <= 7) {
@@ -602,7 +602,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.setFontSize(8.5);
       doc.setTextColor(255, 255, 255);
 
-      const headers = ['Hora', 'Lunes', 'Martes', 'MiÃ©rcoles', 'Jueves', 'Viernes', 'SÃ¡bado'];
+      const headers = ['Hora', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
       let currentX = startX;
       headers.forEach((hdr, idx) => {
         const w = colWidths[idx];
@@ -803,7 +803,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
             Vista Semanal de Horarios (7:00 AM - 8:00 PM)
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            VisualizaciÃ³n panorÃ¡mica de las asignaciones de Lunes a SÃ¡bado.
+            Visualización panorámica de las asignaciones de Lunes a Sábado.
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">

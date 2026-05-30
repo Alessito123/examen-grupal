@@ -12,6 +12,7 @@
     "format": "prettier --write 'frontend/**/*.{ts,tsx,js,jsx,css}' 'backend/**/*.{ts,tsx,js,jsx,css}'",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
+    "vercel-build": "prisma generate --schema=backend/prisma/schema.prisma && next build",
     "seed": "ts-node scripts/seed.ts",
     "test": "jest --config jest.config.js --coverage",
     "test:watch": "jest --watch"
