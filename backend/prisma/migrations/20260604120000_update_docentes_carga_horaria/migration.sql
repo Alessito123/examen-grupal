@@ -21,6 +21,7 @@ ALTER TYPE "Dia" ADD VALUE IF NOT EXISTS 'Sabado';
 
 -- Add new columns before changing Categoria so existing "contratado" rows can be normalized.
 ALTER TABLE "Docente"
+  ADD COLUMN IF NOT EXISTS "antiguedad" INTEGER NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS "codigoIBM" TEXT,
   ADD COLUMN IF NOT EXISTS "condicion" "Condicion" NOT NULL DEFAULT 'NOMBRADO',
   ADD COLUMN IF NOT EXISTS "dedicacion" "Dedicacion" NOT NULL DEFAULT 'TC_40H',
