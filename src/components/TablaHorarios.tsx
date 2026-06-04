@@ -8,12 +8,14 @@ interface Horario {
   horaInicio: string;
   horaFin: string;
   docenteId: number;
-  cursoId: number;
-  aulaId: number;
+  cursoId: number | null;
+  aulaId: number | null;
   docente: { nombre: string; antiguedad: number };
-  curso: { nombre: string };
-  aula: { nombre: string };
-  tipoCurso: string;
+  curso: { nombre: string } | null;
+  aula: { nombre: string } | null;
+  tipoCurso: string | null;
+  tipoActividad?: string;
+  actividadNoLectiva?: string | null;
 }
 
 interface TablaHorariosProps {
@@ -26,8 +28,8 @@ interface TablaHorariosProps {
 }
 
 const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelete, onProposeSwap, isAdmin, currentUser }) => {
-  const getTipoColor = (tipo: string) => {
-    switch (tipo.toLowerCase()) {
+  const getTipoColor = (tipo: string | null) => {
+    switch ((tipo || '').toLowerCase()) {
       case 'teoria': return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400';
       case 'laboratorio': return 'bg-orange-500/10 text-orange-600 dark:text-orange-400';
       default: return 'bg-gray-500/10 text-gray-600 dark:text-gray-400';
@@ -117,7 +119,7 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
                     <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400">
                       <BookOpen size={16} />
                     </div>
-                    <span className="text-sm font-bold text-foreground dark:text-white">{h.curso.nombre}</span>
+                    <span className="text-sm font-bold text-foreground dark:text-white">{h.curso?.nombre || h.actividadNoLectiva || 'Actividad no lectiva'}</span>
                   </div>
                 </td>
                 <td className="p-6">
@@ -125,13 +127,13 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
                     <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
                       <MapPin size={16} />
                     </div>
-                    <span className="text-sm font-medium">{h.aula.nombre}</span>
+                    <span className="text-sm font-medium">{h.aula?.nombre || 'Sin aula'}</span>
                   </div>
                 </td>
                 <td className="p-6">
                   <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-2 w-fit uppercase tracking-tighter ${getTipoColor(h.tipoCurso)}`}>
                     <Tag size={12} />
-                    {h.tipoCurso}
+                    {h.tipoCurso || h.tipoActividad || 'NO_LECTIVA'}
                   </span>
                 </td>
                 {showActions && (
@@ -154,7 +156,7 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              if (onDelete) onDelete(h.id, `${h.curso.nombre} (${h.docente.nombre})`);
+                              if (onDelete) onDelete(h.id, `${h.curso?.nombre || h.actividadNoLectiva || 'Actividad no lectiva'} (${h.docente.nombre})`);
                             }}
                             className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-gray-400 hover:text-red-600 transition-colors"
                             title="Eliminar horario"
@@ -168,7 +170,7 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            if (onProposeSwap) onProposeSwap(h.id, h.curso.nombre, h.docente.nombre, h.docente.antiguedad);
+                            if (onProposeSwap) onProposeSwap(h.id, h.curso?.nombre || 'Actividad no lectiva', h.docente.nombre, h.docente.antiguedad);
                           }}
                           className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg cursor-pointer"
                           title="Solicitar intercambio de horario por antigüedad"

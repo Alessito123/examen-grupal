@@ -16,8 +16,12 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
     codigo: '',
     tipo: 'teoria' as 'teoria' | 'laboratorio',
     creditos: 4,
-    ciclo: 1
+    ciclo: 1,
+    horasTeoria: 0,
+    horasPractica: 0,
+    horasLaboratorio: 0
   });
+
   const [isCodeManual, setIsCodeManual] = useState(false);
   const [codigoError, setCodigoError] = useState<string | null>(null);
 
@@ -43,7 +47,10 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
         codigo: cursoToEdit.codigo || '',
         tipo: cursoToEdit.tipo as 'teoria' | 'laboratorio',
         creditos: cursoToEdit.creditos,
-        ciclo: cursoToEdit.ciclo || 1
+        ciclo: cursoToEdit.ciclo || 1,
+        horasTeoria: cursoToEdit.horasTeoria || 0,
+        horasPractica: cursoToEdit.horasPractica || 0,
+        horasLaboratorio: cursoToEdit.horasLaboratorio || 0
       });
       setIsCodeManual(true);
     } else {
@@ -52,7 +59,10 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
         codigo: '',
         tipo: 'teoria',
         creditos: 4,
-        ciclo: 1
+        ciclo: 1,
+        horasTeoria: 0,
+        horasPractica: 0,
+        horasLaboratorio: 0
       });
       setIsCodeManual(false);
     }
@@ -77,13 +87,16 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const { nombre, tipo, creditos, codigo, ciclo } = formData;
+    const { nombre, tipo, creditos, codigo, ciclo, horasTeoria, horasPractica, horasLaboratorio } = formData;
     const payload = {
       nombre,
       tipo: tipo as 'teoria' | 'laboratorio',
       creditos: Number(creditos),
       codigo,
-      ciclo: Number(ciclo)
+      ciclo: Number(ciclo),
+      horasTeoria: Number(horasTeoria),
+      horasPractica: Number(horasPractica),
+      horasLaboratorio: Number(horasLaboratorio)
     };
 
     if (cursoToEdit) {
@@ -245,6 +258,48 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
                 max="10"
                 value={formData.ciclo}
                 onChange={handleCicloChange}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                Horas Teoría
+              </label>
+              <input 
+                type="number" 
+                required
+                min="0"
+                value={formData.horasTeoria}
+                onChange={(e) => setFormData(prev => ({ ...prev, horasTeoria: parseInt(e.target.value) || 0 }))}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                Horas Práctica
+              </label>
+              <input 
+                type="number" 
+                required
+                min="0"
+                value={formData.horasPractica}
+                onChange={(e) => setFormData(prev => ({ ...prev, horasPractica: parseInt(e.target.value) || 0 }))}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                Horas Lab.
+              </label>
+              <input 
+                type="number" 
+                required
+                min="0"
+                value={formData.horasLaboratorio}
+                onChange={(e) => setFormData(prev => ({ ...prev, horasLaboratorio: parseInt(e.target.value) || 0 }))}
                 className="w-full"
               />
             </div>

@@ -8,6 +8,7 @@ import {
   School, 
   Calendar, 
   FileDown, 
+  FileText,
   LayoutDashboard, 
   LogOut, 
   Menu, 
@@ -96,6 +97,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     { label: 'Docentes', href: '/docentes', icon: <Users size={20} />, roles: ['ADMIN'] },
     { label: 'Aulas', href: '/aulas', icon: <School size={20} />, roles: ['ADMIN'] },
     { label: 'Horarios', href: '/horarios', icon: <Calendar size={20} />, roles: ['ADMIN', 'DOCENTE'] },
+    { label: 'Mi Carga Horaria', href: '/carga-horaria', icon: <FileText size={20} />, roles: ['DOCENTE'] },
     { label: 'Mi Disponibilidad', href: '/disponibilidad', icon: <Clock size={20} />, roles: ['DOCENTE'] },
     { label: 'Reportes PDF', href: '/reportes', icon: <FileDown size={20} />, roles: ['ADMIN'] },
   ];

@@ -16,6 +16,8 @@ if (process.env.NODE_ENV !== 'production') {
   global.prisma = basePrisma;
 }
 
+export { basePrisma };
+
 const prisma = basePrisma.$extends({
   result: {
     docente: {

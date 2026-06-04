@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Mail, Shield, Award, Calendar, Search, Lock, Unlock, Key, AlertCircle, CheckCircle2, BookOpen } from 'lucide-react';
+import { X, User, Mail, Shield, Award, Calendar, Search, Lock, Unlock, Key, AlertCircle, CheckCircle2, BookOpen, School } from 'lucide-react';
 import { trpc } from '../utils/trpc';
 
 interface ModalNuevoDocenteProps {
@@ -17,18 +17,30 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
     email: string;
     password: string;
     categoria: string;
+    condicion: 'NOMBRADO' | 'CONTRATADO';
+    dedicacion: string;
+    codigoIBM: string;
     fechaNombramiento: string | null;
     fechaContrato: string | null;
     rol: string;
+    facultad: string;
+    departamento: string;
+    escuela: string;
   }>({
     dni: '',
     nombre: '',
     email: '',
     password: '',
     categoria: 'auxiliar',
+    condicion: 'NOMBRADO',
+    dedicacion: 'TC_40H',
+    codigoIBM: '',
     fechaNombramiento: null,
     fechaContrato: null,
-    rol: 'DOCENTE'
+    rol: 'DOCENTE',
+    facultad: 'Ingeniería',
+    departamento: 'Departamento de Ingeniería de Sistemas',
+    escuela: 'Ingeniería de Sistemas'
   });
 
   const [isDniReadOnly, setIsDniReadOnly] = useState(false);
@@ -52,15 +64,22 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
   React.useEffect(() => {
     if (docenteId && docenteQuery.data && isOpen) {
       const d = docenteQuery.data as any;
+      const categoria = d.categoria === 'contratado' ? 'profesor' : d.categoria;
       setFormData({
         dni: d.dni || '',
         nombre: d.nombre,
         email: d.email || '',
         password: '',
-        categoria: d.categoria,
+        categoria,
+        condicion: d.categoria === 'contratado' ? 'CONTRATADO' : (d.condicion || 'NOMBRADO'),
+        dedicacion: d.dedicacion || 'TC_40H',
+        codigoIBM: d.codigoIBM || '',
         fechaNombramiento: d.fechaNombramiento ? new Date(d.fechaNombramiento).toISOString().slice(0, 10) : null,
         fechaContrato: d.fechaContrato ? new Date(d.fechaContrato).toISOString().slice(0, 10) : null,
-        rol: d.rol
+        rol: d.rol,
+        facultad: d.facultad || 'Ingeniería',
+        departamento: d.departamento || 'Departamento de Ingeniería de Sistemas',
+        escuela: d.escuela || 'Ingeniería de Sistemas'
       });
       if (d.cursos) {
         setSelectedCursoIds(d.cursos.map((c: any) => c.id));
@@ -91,6 +110,10 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
       onSuccess();
       onClose();
       resetForm();
+    },
+    onError: (err) => {
+      console.error('Error creating docente:', err);
+      alert(`Error al crear docente: ${err.message}`);
     }
   });
 
@@ -100,6 +123,10 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
       onSuccess();
       onClose();
       resetForm();
+    },
+    onError: (err) => {
+      console.error('Error updating docente:', err);
+      alert(`Error al actualizar docente: ${err.message}`);
     }
   });
 
@@ -110,9 +137,15 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
       email: '',
       password: '',
       categoria: 'auxiliar',
+      condicion: 'NOMBRADO',
+      dedicacion: 'TC_40H',
+      codigoIBM: '',
       fechaNombramiento: null,
       fechaContrato: null,
-      rol: 'DOCENTE'
+      rol: 'DOCENTE',
+      facultad: 'Ingeniería',
+      departamento: 'Departamento de Ingeniería de Sistemas',
+      escuela: 'Ingeniería de Sistemas'
     });
     setSelectedCursoIds([]);
     setCursoSearch('');
@@ -154,14 +187,25 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const payload = {
-      ...formData,
-      email: formData.email || undefined,
-      rol: formData.rol as 'ADMIN' | 'DOCENTE',
-      categoria: formData.categoria as any,
-      password: formData.password || undefined,
+    const payload: any = {
+      nombre: formData.nombre,
+      categoria: formData.categoria,
+      condicion: formData.condicion,
+      dedicacion: formData.dedicacion,
+      codigoIBM: formData.codigoIBM || null,
+      fechaNombramiento: formData.fechaNombramiento || null,
+      fechaContrato: formData.fechaContrato || null,
+      dni: formData.dni || null,
+      email: formData.email || null,
+      facultad: formData.facultad,
+      departamento: formData.departamento,
+      escuela: formData.escuela,
       cursos: selectedCursoIds
     };
+
+    if (formData.password && formData.password.trim() !== "") {
+      payload.password = formData.password;
+    }
 
     if (docenteId) {
       updateMutation.mutate({
@@ -298,31 +342,85 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
             </div>
           </div>
 
-          <div className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <Shield size={12} /> Código IBM
+              </label>
+              <input 
+                type="text" 
+                value={formData.codigoIBM}
+                onChange={(e) => setFormData({...formData, codigoIBM: e.target.value})}
+                placeholder="Ej. 4247"
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <Shield size={12} /> Condición
+              </label>
+              <select 
+                value={formData.condicion}
+                onChange={(e) => {
+                  const condicion = e.target.value as 'NOMBRADO' | 'CONTRATADO';
+                  setFormData({
+                    ...formData,
+                    condicion,
+                    fechaContrato: condicion === 'NOMBRADO' ? null : formData.fechaContrato,
+                    fechaNombramiento: condicion === 'CONTRATADO' ? null : formData.fechaNombramiento,
+                  });
+                }}
+                className="w-full"
+              >
+                <option value="NOMBRADO">Nombrado</option>
+                <option value="CONTRATADO">Contratado</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                 <Award size={12} /> Categoría
               </label>
               <select 
                 value={formData.categoria}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === 'principal' || val === 'asociado') {
-                    setFormData({...formData, categoria: val, fechaContrato: null});
-                  } else {
-                    setFormData({...formData, categoria: val, fechaNombramiento: null});
-                  }
-                }}
+                onChange={(e) => setFormData({...formData, categoria: e.target.value})}
                 className="w-full"
               >
                 <option value="principal">Principal</option>
                 <option value="asociado">Asociado</option>
                 <option value="auxiliar">Auxiliar</option>
-                <option value="contratado">Contratado</option>
+                <option value="jefe_practica">Jefe de Práctica</option>
+                <option value="profesor">Profesor</option>
+                <option value="alumno">Alumno</option>
               </select>
             </div>
 
-            {(formData.categoria === 'principal' || formData.categoria === 'asociado') ? (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <Shield size="12" /> Dedicación
+              </label>
+              <select 
+                value={formData.dedicacion}
+                onChange={(e) => setFormData({...formData, dedicacion: e.target.value})}
+                className="w-full"
+              >
+                <option value="DE_EXCLUSIVA">Dedicación Exclusiva</option>
+                <option value="TP">Tiempo Parcial</option>
+                <option value="TP_8H">Tiempo Parcial 8H</option>
+                <option value="TP_10H">Tiempo Parcial 10H</option>
+                <option value="TP_12H">Tiempo Parcial 12H</option>
+                <option value="TP_16H">Tiempo Parcial 16H</option>
+                <option value="TP_20H">Tiempo Parcial 20H</option>
+                <option value="TC_40H">Tiempo Completo 40H</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            {formData.condicion === 'NOMBRADO' ? (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                   <Calendar size={12} /> Fecha de Nombramiento
@@ -349,6 +447,47 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
                 />
               </div>
             )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <School size={12} /> Facultad
+              </label>
+              <input 
+                type="text" 
+                value={formData.facultad}
+                onChange={(e) => setFormData({...formData, facultad: e.target.value})}
+                placeholder="Ej. Ingeniería"
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <School size={12} /> Departamento
+              </label>
+              <input 
+                type="text" 
+                value={formData.departamento}
+                onChange={(e) => setFormData({...formData, departamento: e.target.value})}
+                placeholder="Ej. Departamento de Ingeniería de Sistemas"
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <School size={12} /> Escuela
+              </label>
+              <input 
+                type="text" 
+                value={formData.escuela}
+                onChange={(e) => setFormData({...formData, escuela: e.target.value})}
+                placeholder="Ej. Ingeniería de Sistemas"
+                className="w-full"
+              />
+            </div>
           </div>
 
           {/* Premium Courses Multi-select */}
@@ -451,20 +590,6 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
                 </>
               )}
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-              <Shield size={12} /> Rol en Sistema
-            </label>
-            <select 
-              value={formData.rol}
-              onChange={(e) => setFormData({...formData, rol: e.target.value})}
-              className="w-full"
-            >
-              <option value="DOCENTE">Docente</option>
-              <option value="ADMIN">Administrador</option>
-            </select>
           </div>
 
           <div className="pt-4 flex gap-4">

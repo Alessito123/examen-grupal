@@ -23,8 +23,8 @@ export class AsignacionService {
     // 1. Obtener docentes ordenados por categoría y antigüedad (Requisito Clave) en memoria
     const docentesList = await prisma.docente.findMany();
     const docentes = docentesList.sort((a, b) => {
-      const pA = { principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, contratado: 5 }[a.categoria] || 99;
-      const pB = { principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, contratado: 5 }[b.categoria] || 99;
+      const pA = { principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, profesor: 5, alumno: 6 }[a.categoria] || 99;
+      const pB = { principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, profesor: 5, alumno: 6 }[b.categoria] || 99;
       if (pA !== pB) return pA - pB;
       return b.antiguedad - a.antiguedad; // mayor antigüedad primero
     });

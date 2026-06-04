@@ -4,10 +4,13 @@ import prisma from '../prisma/client';
 
 const cursoSchema = z.object({
   nombre: z.string().min(1),
-  tipo: z.enum(['teoria', 'laboratorio']),
-  creditos: z.number().int().positive(),
   codigo: z.string().optional(),
+  creditos: z.number().int().positive(),
   ciclo: z.number().int().positive().optional(),
+  horasTeoria: z.number().int().nonnegative().default(0),
+  horasPractica: z.number().int().nonnegative().default(0),
+  horasLaboratorio: z.number().int().nonnegative().default(0),
+  tipo: z.enum(['teoria', 'laboratorio']).optional(),
 });
 
 export const cursosRouter = router({
@@ -53,7 +56,18 @@ export const cursosRouter = router({
         });
         if (existing) throw new Error(`El código de curso ya está registrado para una clase de ${input.tipo}.`);
       }
-      return prisma.curso.create({ data: input });
+      return (prisma as any).curso.create({ 
+        data: {
+          nombre: input.nombre,
+          codigo: input.codigo,
+          creditos: input.creditos,
+          ciclo: input.ciclo,
+          horasTeoria: input.horasTeoria,
+          horasPractica: input.horasPractica,
+          horasLaboratorio: input.horasLaboratorio,
+          tipo: input.tipo || 'teoria'
+        }
+      });
     }),
 
   update: publicProcedure
@@ -70,7 +84,19 @@ export const cursosRouter = router({
         });
         if (existing) throw new Error(`El código de curso ya está registrado para una clase de ${input.tipo}.`);
       }
-      return prisma.curso.update({ where: { id }, data });
+      return (prisma as any).curso.update({ 
+        where: { id }, 
+        data: {
+          nombre: data.nombre,
+          codigo: data.codigo,
+          creditos: data.creditos,
+          ciclo: data.ciclo,
+          horasTeoria: data.horasTeoria,
+          horasPractica: data.horasPractica,
+          horasLaboratorio: data.horasLaboratorio,
+          tipo: data.tipo || 'teoria'
+        }
+      });
     }),
 
   delete: publicProcedure

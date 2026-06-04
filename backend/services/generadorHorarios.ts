@@ -8,7 +8,8 @@ const PRIORIDAD_CATEGORIA: Record<Categoria, number> = {
   asociado: 2,
   auxiliar: 3,
   jefe_practica: 4,
-  contratado: 5,
+  profesor: 5,
+  alumno: 6,
 };
 
 const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'] as Dia[];

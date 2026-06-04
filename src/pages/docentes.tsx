@@ -60,9 +60,37 @@ const DocentesPage: React.FC = () => {
       case 'principal': return 'bg-purple-500/10 text-purple-600 dark:text-purple-400';
       case 'asociado': return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
       case 'auxiliar': return 'bg-green-500/10 text-green-600 dark:text-green-400';
-      case 'contratado': return 'bg-orange-500/10 text-orange-600 dark:text-orange-400';
+      case 'jefe_practica': return 'bg-orange-500/10 text-orange-600 dark:text-orange-400';
+      case 'profesor': return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400';
+      case 'alumno': return 'bg-pink-500/10 text-pink-600 dark:text-pink-400';
       default: return 'bg-gray-500/10 text-gray-600 dark:text-gray-400';
     }
+  };
+
+  const getDocenteDisplayCategory = (d: any) => {
+    const labels: Record<string, string> = {
+      principal: 'Principal',
+      asociado: 'Asociado',
+      auxiliar: 'Auxiliar',
+      jefe_practica: 'Jefe de Práctica',
+      profesor: 'Profesor',
+      alumno: 'Alumno'
+    };
+    return labels[d.categoria.toLowerCase()] || d.categoria;
+  };
+
+  const getDedicacionLabel = (dedicacion: string) => {
+    const labels: Record<string, string> = {
+      DE_EXCLUSIVA: 'Dedicación Exclusiva',
+      TP: 'Tiempo Parcial',
+      TP_8H: 'Tiempo Parcial 8H',
+      TP_10H: 'Tiempo Parcial 10H',
+      TP_12H: 'Tiempo Parcial 12H',
+      TP_16H: 'Tiempo Parcial 16H',
+      TP_20H: 'Tiempo Parcial 20H',
+      TC_40H: 'Tiempo Completo 40H'
+    };
+    return labels[dedicacion] || dedicacion;
   };
 
   const getRolColor = (rol: string) => {
@@ -127,7 +155,9 @@ const DocentesPage: React.FC = () => {
               <option value="principal">Principal</option>
               <option value="asociado">Asociado</option>
               <option value="auxiliar">Auxiliar</option>
-              <option value="contratado">Contratado</option>
+              <option value="jefe_practica">Jefe de Práctica</option>
+              <option value="profesor">Profesor</option>
+              <option value="alumno">Alumno</option>
             </select>
             <button 
               onClick={() => { setSearchTerm(''); setFilterCategoria(''); }}
@@ -160,8 +190,9 @@ const DocentesPage: React.FC = () => {
               <table className="w-full min-w-[900px] border-separate border-spacing-0">
                 <thead>
                   <tr className="bg-gray-100/50 dark:bg-white/[0.03]">
-                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest first:rounded-tl-3xl">Nombre y Email</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Categoría</th>
+                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest first:rounded-tl-3xl">IBM / Docente</th>
+                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Condición / Categoría</th>
+                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Dedicación</th>
                     <th className="p-4 text-center text-xs font-bold text-gray-500 uppercase tracking-widest">Antigüedad</th>
                     <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Rol</th>
                     <th className="p-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest last:rounded-tr-3xl">Acciones</th>
@@ -170,7 +201,7 @@ const DocentesPage: React.FC = () => {
                 <tbody className="divide-y divide-gray-200 dark:divide-white/5">
                   {filteredDocentes.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-12 text-center text-gray-500 italic">
+                      <td colSpan={6} className="p-12 text-center text-gray-500 italic">
                         No se encontraron docentes que coincidan con la búsqueda.
                       </td>
                     </tr>
@@ -185,46 +216,57 @@ const DocentesPage: React.FC = () => {
                       >
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold shadow-sm">
-                              {d.nombre.charAt(0)}
+                            <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold shadow-sm flex-shrink-0">
+                              {d.codigoIBM || <Users size={18} aria-hidden="true" />}
                             </div>
-                            <div className="flex flex-col">
-                              <span className="font-semibold text-gray-900 dark:text-gray-100">{d.nombre}</span>
-                              <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">{d.nombre}</span>
+                              <span className="text-xs text-gray-500 flex items-center gap-1 truncate">
                                 <Mail size={12} />
                                 {d.email || 'Sin correo'}
                               </span>
-                              {d.cursos && d.cursos.length > 0 && (
-                                <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold mt-1 flex items-center gap-1 bg-purple-500/5 px-2 py-0.5 rounded-md w-fit border border-purple-500/10">
-                                  <BookOpen size={10} />
-                                  {d.cursos.length} {d.cursos.length === 1 ? 'curso asignado' : 'cursos asignados'}
-                                </span>
+                              {d.dni && (
+                                <span className="text-[10px] text-gray-400 font-medium">DNI: {d.dni}</span>
                               )}
                             </div>
                           </div>
                         </td>
                         <td className="p-4">
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 w-fit uppercase tracking-tighter ${getCategoryColor(d.categoria)}`}>
-                            <Award size={14} />
-                            {d.categoria}
+                          <div className="flex flex-col gap-1.5">
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold w-fit uppercase tracking-wider border ${
+                              d.condicion === 'NOMBRADO' 
+                                ? 'bg-emerald-500/5 text-emerald-600 border-emerald-500/20' 
+                                : 'bg-amber-500/5 text-amber-600 border-amber-500/20'
+                            }`}>
+                              {d.condicion}
+                            </span>
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 w-fit uppercase tracking-tighter ${getCategoryColor(d.categoria)}`}>
+                              <Award size={14} />
+                              {getDocenteDisplayCategory(d)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            {getDedicacionLabel(d.dedicacion)}
                           </span>
                         </td>
                         <td className="p-4 text-center font-medium">
                           <div className="flex flex-col items-center gap-1">
-                            <span className="text-sm text-gray-900 dark:text-gray-200 font-bold">{d.antiguedad} años</span>
+                            <span className="text-sm text-gray-900 dark:text-gray-200 font-bold">{d.antiguedad || 0} años</span>
                             <div className="w-16 h-1 bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
                               <div 
                                 className="h-full bg-purple-600" 
-                                style={{ width: `${Math.min(d.antiguedad * 5, 100)}%` }} 
+                                style={{ width: `${Math.min((d.antiguedad || 0) * 5, 100)}%` }} 
                                 />
                             </div>
-                            {d.fechaNombramiento && (
+                            {d.condicion === 'NOMBRADO' && d.fechaNombramiento && (
                               <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Nombr.: {(() => {
                                 const date = new Date(d.fechaNombramiento);
                                 return `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${date.getUTCFullYear()}`;
                               })()}</span>
                             )}
-                            {d.fechaContrato && (
+                            {d.condicion === 'CONTRATADO' && d.fechaContrato && (
                               <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Contr.: {(() => {
                                 const date = new Date(d.fechaContrato);
                                 return `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${date.getUTCFullYear()}`;

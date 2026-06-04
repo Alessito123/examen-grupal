@@ -8,7 +8,13 @@ export const CATEGORIAS = {
   ASOCIADO: 'asociado',
   AUXILIAR: 'auxiliar',
   JEFE_PRACTICA: 'jefe_practica',
-  CONTRATADO: 'contratado',
+  PROFESOR: 'profesor',
+  ALUMNO: 'alumno',
+} as const;
+
+export const CONDICIONES = {
+  NOMBRADO: 'NOMBRADO',
+  CONTRATADO: 'CONTRATADO',
 } as const;
 
 export const DIAS_SEMANA = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes'] as const;

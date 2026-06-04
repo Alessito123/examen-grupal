@@ -24,7 +24,7 @@ services:
     volumes:
       - ../:/app
       - /app/node_modules
-    command: npx next dev -H 0.0.0.0 -p 3000
+    command: sh -c "npx prisma generate --schema=backend/prisma/schema.prisma && npx next dev -H 0.0.0.0 -p 3000"
     depends_on:
       - db
 
@@ -32,7 +32,7 @@ services:
   # PostgreSQL Database (Local)
   # ========================
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: examen-grupal-db
     restart: always
     environment:
@@ -40,7 +40,7 @@ services:
       POSTGRES_PASSWORD: 1234
       POSTGRES_DB: sistema_horarios
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:

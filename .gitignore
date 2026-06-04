@@ -57,5 +57,6 @@ public/pdfReports/
 # Optional: cache, temp files
 .cache/
 .tmp/
+scratch/db-dumps/
 
 .vercel

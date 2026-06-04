@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const docenteSchema = z.object({
   nombre: z.string().min(1, 'El nombre del docente es obligatorio'),
-  categoria: z.enum(['principal', 'asociado', 'auxiliar', 'jefe_practica', 'contratado'], {
+  categoria: z.enum(['principal', 'asociado', 'auxiliar', 'jefe_practica', 'profesor', 'alumno'], {
     errorMap: () => ({ message: 'Categoría inválida' }),
   }),
   antiguedad: z.number().int().nonnegative('La antigüedad debe ser un número positivo'),

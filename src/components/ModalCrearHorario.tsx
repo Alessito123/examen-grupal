@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { trpc } from '../utils/trpc';
-import { X, Calendar, Clock, User, Users, BookOpen, School, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { X, Calendar, Clock, User, Users, BookOpen, School, AlertTriangle, CheckCircle2, Briefcase } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ModalCrearHorarioProps {
@@ -21,7 +21,9 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     horaFin: '10:00',
     tipoCurso: 'teoria' as 'teoria' | 'laboratorio',
     grupo: '',
-    semestre: '2026-I'
+    semestre: '2026-I',
+    tipoActividad: 'LECTIVA' as 'LECTIVA' | 'NO_LECTIVA',
+    actividadNoLectiva: ''
   });
 
   const formatToTimeInput = (dateVal: string | Date) => {
@@ -43,14 +45,16 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     if (horarioToEdit && isOpen) {
       setFormData({
         docenteId: String(horarioToEdit.docenteId),
-        cursoId: String(horarioToEdit.cursoId),
-        aulaId: String(horarioToEdit.aulaId),
+        cursoId: horarioToEdit.cursoId ? String(horarioToEdit.cursoId) : '',
+        aulaId: horarioToEdit.aulaId ? String(horarioToEdit.aulaId) : '',
         dia: horarioToEdit.dia,
         horaInicio: formatToTimeInput(horarioToEdit.horaInicio) || '08:00',
         horaFin: formatToTimeInput(horarioToEdit.horaFin) || '10:00',
-        tipoCurso: horarioToEdit.tipoCurso as 'teoria' | 'laboratorio',
+        tipoCurso: (horarioToEdit.tipoCurso as 'teoria' | 'laboratorio') || 'teoria',
         grupo: horarioToEdit.grupo || '',
-        semestre: horarioToEdit.semestre || defaultSemestre || '2026-I'
+        semestre: horarioToEdit.semestre || defaultSemestre || '2026-I',
+        tipoActividad: horarioToEdit.tipoActividad || 'LECTIVA',
+        actividadNoLectiva: horarioToEdit.actividadNoLectiva || ''
       });
     } else if (isOpen) {
       setFormData({
@@ -62,7 +66,9 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
         horaFin: '10:00',
         tipoCurso: 'teoria',
         grupo: '',
-        semestre: defaultSemestre || '2026-I'
+        semestre: defaultSemestre || '2026-I',
+        tipoActividad: 'LECTIVA',
+        actividadNoLectiva: ''
       });
     }
   }, [horarioToEdit, isOpen, defaultSemestre]);
@@ -71,16 +77,17 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     {
       id: horarioToEdit?.id,
       docenteId: Number(formData.docenteId),
-      aulaId: Number(formData.aulaId),
+      aulaId: formData.aulaId ? Number(formData.aulaId) : null,
       dia: formData.dia,
       horaInicio: `1970-01-01T${formData.horaInicio}:00Z`,
       horaFin: `1970-01-01T${formData.horaFin}:00Z`,
-      cursoId: Number(formData.cursoId) || undefined,
+      cursoId: Number(formData.cursoId) || null,
       grupo: formData.grupo || null,
       semestre: formData.semestre,
+      tipoActividad: formData.tipoActividad
     },
     {
-      enabled: !!formData.docenteId && !!formData.aulaId && isOpen,
+      enabled: !!formData.docenteId && isOpen,
     }
   );
 
@@ -172,14 +179,16 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
 
     const payload = {
       docenteId: Number(formData.docenteId),
-      cursoId: Number(formData.cursoId),
-      aulaId: Number(formData.aulaId),
+      cursoId: formData.tipoActividad === 'LECTIVA' ? Number(formData.cursoId) : null,
+      aulaId: formData.tipoActividad === 'LECTIVA' ? Number(formData.aulaId) : null,
       dia: formData.dia as any,
       horaInicio: `1970-01-01T${formData.horaInicio}:00Z`,
       horaFin: `1970-01-01T${formData.horaFin}:00Z`,
-      tipoCurso: formData.tipoCurso,
-      grupo: formData.grupo || null,
-      semestre: formData.semestre
+      tipoCurso: formData.tipoActividad === 'LECTIVA' ? formData.tipoCurso : null,
+      grupo: formData.tipoActividad === 'LECTIVA' ? (formData.grupo || null) : null,
+      semestre: formData.semestre,
+      tipoActividad: formData.tipoActividad,
+      actividadNoLectiva: formData.tipoActividad === 'NO_LECTIVA' ? formData.actividadNoLectiva : null
     };
 
     if (horarioToEdit) {
@@ -221,6 +230,37 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
+          {/* Tipo de Actividad Selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+              Tipo de Actividad
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, tipoActividad: 'LECTIVA' }))}
+                className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-3 font-bold ${
+                  formData.tipoActividad === 'LECTIVA' 
+                  ? 'border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300' 
+                  : 'border-gray-100 bg-gray-50 text-gray-400 dark:bg-white/5 dark:border-white/5'
+                }`}
+              >
+                <BookOpen size={20} /> Lectiva
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, tipoActividad: 'NO_LECTIVA' }))}
+                className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-3 font-bold ${
+                  formData.tipoActividad === 'NO_LECTIVA' 
+                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300' 
+                  : 'border-gray-100 bg-gray-50 text-gray-400 dark:bg-white/5 dark:border-white/5'
+                }`}
+              >
+                <Briefcase size={20} /> No Lectiva
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2 md:col-span-2">
               <label className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
@@ -237,7 +277,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
               </select>
             </div>
 
-            <div className="space-y-2">
+            <div className={`space-y-2 ${formData.tipoActividad === 'NO_LECTIVA' ? 'md:col-span-2' : ''}`}>
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                 <User size={12} /> Docente
               </label>
@@ -252,60 +292,87 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
               </select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                <BookOpen size={12} /> Curso
-              </label>
-              <select 
-                required
-                value={formData.cursoId}
-                onChange={(e) => setFormData({...formData, cursoId: e.target.value})}
-                className="w-full"
-              >
-                <option value="">{formData.docenteId ? "Seleccionar Curso" : "Seleccione un docente primero"}</option>
-                {filteredCursos.map((c: any) => <option key={c.id} value={c.id}>{c.nombre} ({c.tipo})</option>)}
-              </select>
-            </div>
+            {formData.tipoActividad === 'LECTIVA' ? (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                    <BookOpen size={12} /> Curso
+                  </label>
+                  <select 
+                    required
+                    value={formData.cursoId}
+                    onChange={(e) => setFormData({...formData, cursoId: e.target.value})}
+                    className="w-full"
+                  >
+                    <option value="">{formData.docenteId ? "Seleccionar Curso" : "Seleccione un docente primero"}</option>
+                    {filteredCursos.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                <School size={12} /> Aula / Laboratorio
-              </label>
-              <select 
-                required
-                value={formData.aulaId}
-                onChange={(e) => {
-                  const selectedAula = aulas.data?.find(a => a.id === Number(e.target.value));
-                  setFormData({
-                    ...formData,
-                    aulaId: e.target.value,
-                    tipoCurso: selectedAula ? (selectedAula.tipo as 'teoria' | 'laboratorio') : formData.tipoCurso
-                  });
-                }}
-                className="w-full"
-              >
-                <option value="">Seleccionar Ambiente</option>
-                {aulas.data?.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.tipo})</option>)}
-              </select>
-            </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                    <School size={12} /> Aula / Laboratorio
+                  </label>
+                  <select 
+                    required
+                    value={formData.aulaId}
+                    onChange={(e) => {
+                      const selectedAula = aulas.data?.find(a => a.id === Number(e.target.value));
+                      setFormData({
+                        ...formData,
+                        aulaId: e.target.value,
+                        tipoCurso: selectedAula ? (selectedAula.tipo as 'teoria' | 'laboratorio') : formData.tipoCurso
+                      });
+                    }}
+                    className="w-full"
+                  >
+                    <option value="">Seleccionar Ambiente</option>
+                    {aulas.data?.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.tipo})</option>)}
+                  </select>
+                </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                <Users size={12} /> Asignar Grupo (Opcional)
-              </label>
-              <select 
-                value={formData.grupo}
-                onChange={(e) => setFormData({...formData, grupo: e.target.value})}
-                className="w-full bg-white dark:bg-black/20 border-gray-200 dark:border-white/10"
-              >
-                <option value="">Sin Grupo (No aplica)</option>
-                <option value="GRUPO 1">GRUPO 1</option>
-                <option value="GRUPO 2">GRUPO 2</option>
-                <option value="GRUPO 3">GRUPO 3</option>
-                <option value="GRUPO 4">GRUPO 4</option>
-                <option value="GRUPO 5">GRUPO 5</option>
-              </select>
-            </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                    <Users size={12} /> Asignar Grupo (Opcional)
+                  </label>
+                  <select 
+                    value={formData.grupo}
+                    onChange={(e) => setFormData({...formData, grupo: e.target.value})}
+                    className="w-full bg-white dark:bg-black/20 border-gray-200 dark:border-white/10"
+                  >
+                    <option value="">Sin Grupo (No aplica)</option>
+                    <option value="GRUPO 1">GRUPO 1</option>
+                    <option value="GRUPO 2">GRUPO 2</option>
+                    <option value="GRUPO 3">GRUPO 3</option>
+                    <option value="GRUPO 4">GRUPO 4</option>
+                    <option value="GRUPO 5">GRUPO 5</option>
+                  </select>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                  <Briefcase size={12} /> Actividad No Lectiva
+                </label>
+                <select 
+                  required
+                  value={formData.actividadNoLectiva}
+                  onChange={(e) => setFormData({...formData, actividadNoLectiva: e.target.value})}
+                  className="w-full"
+                >
+                  <option value="">Seleccionar Rubro...</option>
+                  <option value="Preparación y Evaluación">Preparación y Evaluación</option>
+                  <option value="Consejería y Tutoría">Consejería y Tutoría</option>
+                  <option value="Investigación">Investigación</option>
+                  <option value="Capacitación">Capacitación</option>
+                  <option value="Actividades de Gobierno">Actividades de Gobierno</option>
+                  <option value="Actividades de Administración">Actividades de Administración</option>
+                  <option value="Asesoría de Tesis">Asesoría de Tesis</option>
+                  <option value="Responsabilidad Social">Responsabilidad Social</option>
+                  <option value="Comités Técnicos y Comisiones">Comités Técnicos y Comisiones</option>
+                </select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
@@ -362,21 +429,23 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
             )}
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex-1 space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tipo de Sesión</label>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="tipo" checked={formData.tipoCurso === 'teoria'} onChange={() => setFormData({...formData, tipoCurso: 'teoria'})} className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-medium text-foreground dark:text-white">Teoría</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="tipo" checked={formData.tipoCurso === 'laboratorio'} onChange={() => setFormData({...formData, tipoCurso: 'laboratorio'})} className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-medium text-foreground dark:text-white">Laboratorio</span>
-                </label>
+          {formData.tipoActividad === 'LECTIVA' && (
+            <div className="flex items-center gap-4">
+              <div className="flex-1 space-y-2">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tipo de Sesión</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="tipo" checked={formData.tipoCurso === 'teoria'} onChange={() => setFormData({...formData, tipoCurso: 'teoria'})} className="w-4 h-4 text-purple-600" />
+                    <span className="text-sm font-medium text-foreground dark:text-white">Teoría</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="tipo" checked={formData.tipoCurso === 'laboratorio'} onChange={() => setFormData({...formData, tipoCurso: 'laboratorio'})} className="w-4 h-4 text-purple-600" />
+                    <span className="text-sm font-medium text-foreground dark:text-white">Laboratorio</span>
+                  </label>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Validation Feedback */}
           <AnimatePresence>

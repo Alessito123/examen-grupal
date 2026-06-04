@@ -18,6 +18,20 @@ function checkTimeRange(inicio: Date, fin: Date) {
   }
 }
 
+const horarioInputSchema = z.object({
+  docenteId: z.number().int(),
+  cursoId: z.number().int().optional().nullable(),
+  aulaId: z.number().int().optional().nullable(),
+  dia: z.enum(['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado']),
+  horaInicio: z.string(),
+  horaFin: z.string(),
+  tipoCurso: z.enum(['teoria', 'laboratorio']).optional().nullable(),
+  grupo: z.string().nullable().optional(),
+  semestre: z.string(),
+  tipoActividad: z.enum(['LECTIVA', 'NO_LECTIVA']).default('LECTIVA'),
+  actividadNoLectiva: z.string().optional().nullable(),
+});
+
 export const horariosRouter = router({
   getAll: publicProcedure.query(async () => {
     return prisma.horario.findMany({
@@ -50,16 +64,17 @@ export const horariosRouter = router({
     .input(z.object({
       id: z.number().int().optional(),
       docenteId: z.number().int(),
-      aulaId: z.number().int(),
+      aulaId: z.number().int().optional().nullable(),
       dia: z.string(),
       horaInicio: z.string(), // ISO string or time string
       horaFin: z.string(),
-      cursoId: z.number().int().optional(),
+      cursoId: z.number().int().optional().nullable(),
       grupo: z.string().nullable().optional(),
       semestre: z.string(),
+      tipoActividad: z.enum(['LECTIVA', 'NO_LECTIVA']).default('LECTIVA'),
     }))
     .query(async ({ input }) => {
-      const { id, docenteId, aulaId, dia, horaInicio, horaFin, cursoId, grupo, semestre } = input;
+      const { id, docenteId, aulaId, dia, horaInicio, horaFin, cursoId, grupo, semestre, tipoActividad } = input;
       
       const inicio = new Date(horaInicio);
       const fin = new Date(horaFin);
@@ -72,8 +87,8 @@ export const horariosRouter = router({
           NOT: id ? { id } : undefined,
           OR: [
             { docenteId },
-            { aulaId }
-          ],
+            aulaId ? { aulaId } : undefined
+          ].filter(Boolean) as any,
           AND: [
             { horaInicio: { lt: fin } },
             { horaFin: { gt: inicio } }
@@ -90,7 +105,7 @@ export const horariosRouter = router({
         const isDocente = c.docenteId === docenteId;
         const msg = isDocente 
           ? `¡Conflicto de Horario! El docente ${c.docente.nombre} ya tiene una clase asignada en este bloque (${dia}).`
-          : `¡Conflicto de Ambiente! El ambiente ${c.aula.nombre} ya está ocupado en este bloque (${dia}).`;
+          : `¡Conflicto de Ambiente! El ambiente ${c.aula?.nombre || 'seleccionado'} ya está ocupado en este bloque (${dia}).`;
         return {
           hasConflict: true,
           message: msg,
@@ -117,7 +132,7 @@ export const horariosRouter = router({
         if (conflictoGrupo) {
           return {
             hasConflict: true,
-            message: `¡Conflicto de Grupo! El grupo "${grupo}" para el curso "${conflictoGrupo.curso.nombre}" ya está asignado al docente ${conflictoGrupo.docente.nombre}. No se puede asignar al mismo grupo.`,
+            message: `¡Conflicto de Grupo! El grupo "${grupo}" para el curso "${conflictoGrupo.curso?.nombre || 'seleccionado'}" ya está asignado al docente ${conflictoGrupo.docente.nombre}. No se puede asignar al mismo grupo.`,
             conflicts: [conflictoGrupo]
           };
         }
@@ -131,24 +146,14 @@ export const horariosRouter = router({
     }),
 
   create: publicProcedure
-    .input(z.object({
-      docenteId: z.number().int(),
-      cursoId: z.number().int(),
-      aulaId: z.number().int(),
-      dia: z.enum(['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado']),
-      horaInicio: z.string(),
-      horaFin: z.string(),
-      tipoCurso: z.enum(['teoria', 'laboratorio']),
-      grupo: z.string().nullable().optional(),
-      semestre: z.string(),
-    }))
+    .input(horarioInputSchema)
     .mutation(async ({ input }) => {
       const inicio = new Date(input.horaInicio);
       const fin = new Date(input.horaFin);
       checkTimeRange(inicio, fin);
 
       // Database check for shared course group conflict
-      if (input.cursoId && input.grupo) {
+      if (input.tipoActividad === 'LECTIVA' && input.cursoId && input.grupo) {
         const conflictoGrupo = await prisma.horario.findFirst({
           where: {
             semestre: input.semestre,
@@ -162,11 +167,11 @@ export const horariosRouter = router({
           }
         });
         if (conflictoGrupo) {
-          throw new Error(`Conflicto de Grupo: El grupo "${input.grupo}" para el curso "${conflictoGrupo.curso.nombre}" ya está asignado al docente ${conflictoGrupo.docente.nombre}.`);
+          throw new Error(`Conflicto de Grupo: El grupo "${input.grupo}" para el curso "${conflictoGrupo.curso?.nombre || 'seleccionado'}" ya está asignado al docente ${conflictoGrupo.docente.nombre}.`);
         }
       }
 
-      const newHorario = await prisma.horario.create({
+      const newHorario = await (prisma as any).horario.create({
         data: {
           docenteId: input.docenteId,
           cursoId: input.cursoId,
@@ -176,7 +181,9 @@ export const horariosRouter = router({
           horaFin: fin,
           tipoCurso: input.tipoCurso as TipoCurso,
           grupo: input.grupo ?? null,
-          semestre: input.semestre
+          semestre: input.semestre,
+          tipoActividad: input.tipoActividad,
+          actividadNoLectiva: input.actividadNoLectiva
         } as any
       });
 
@@ -198,18 +205,7 @@ export const horariosRouter = router({
     }),
 
   update: publicProcedure
-    .input(z.object({
-      id: z.number().int(),
-      docenteId: z.number().int(),
-      cursoId: z.number().int(),
-      aulaId: z.number().int(),
-      dia: z.enum(['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado']),
-      horaInicio: z.string(),
-      horaFin: z.string(),
-      tipoCurso: z.enum(['teoria', 'laboratorio']),
-      grupo: z.string().nullable().optional(),
-      semestre: z.string(),
-    }))
+    .input(horarioInputSchema.extend({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       const { id } = input;
       const inicio = new Date(input.horaInicio);
@@ -217,7 +213,7 @@ export const horariosRouter = router({
       checkTimeRange(inicio, fin);
 
       // Database check for shared course group conflict
-      if (input.cursoId && input.grupo) {
+      if (input.tipoActividad === 'LECTIVA' && input.cursoId && input.grupo) {
         const conflictoGrupo = await prisma.horario.findFirst({
           where: {
             semestre: input.semestre,
@@ -232,11 +228,11 @@ export const horariosRouter = router({
           }
         });
         if (conflictoGrupo) {
-          throw new Error(`Conflicto de Grupo: El grupo "${input.grupo}" para el curso "${conflictoGrupo.curso.nombre}" ya está asignado al docente ${conflictoGrupo.docente.nombre}.`);
+          throw new Error(`Conflicto de Grupo: El grupo "${input.grupo}" para el curso "${conflictoGrupo.curso?.nombre || 'seleccionado'}" ya está asignado al docente ${conflictoGrupo.docente.nombre}.`);
         }
       }
 
-      const updatedHorario = await prisma.horario.update({
+      const updatedHorario = await (prisma as any).horario.update({
         where: { id },
         data: {
           docenteId: input.docenteId,
@@ -247,7 +243,9 @@ export const horariosRouter = router({
           horaFin: fin,
           tipoCurso: input.tipoCurso as TipoCurso,
           grupo: input.grupo ?? null,
-          semestre: input.semestre
+          semestre: input.semestre,
+          tipoActividad: input.tipoActividad,
+          actividadNoLectiva: input.actividadNoLectiva
         } as any
       });
 

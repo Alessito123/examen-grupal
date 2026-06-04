@@ -9,114 +9,79 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// =========================
-// Docentes
-// =========================
 model Docente {
-  id         Int        @id @default(autoincrement())
-  nombre     String
-  categoria  Categoria
-  fechaNombramiento DateTime?
+  id                Int                     @id @default(autoincrement())
+  nombre            String
+  categoria         Categoria
+  antiguedad        Int                     @default(0)
+  disponibilidad    String?
+  email             String?                 @unique
+  password          String?
+  resetToken        String?                 @unique
+  resetTokenExpiry  DateTime?
+  rol               Rol                     @default(DOCENTE)
+  dni               String?                 @unique
   fechaContrato     DateTime?
-  dni        String?    @unique
-  email      String?    @unique
-  password   String?
-  resetToken String?    @unique
-  resetTokenExpiry DateTime?
-  rol        Rol        @default(DOCENTE)
-  disponibilidad String?    // JSON string representation of teacher availability blocks (deprecated)
-  disponibilidades DisponibilidadDocente[]
-  cursos     Curso[]    @relation("DocenteCursos")
-
-  horarios   Horario[]
+  fechaNombramiento DateTime?
+  codigoIBM         String?
+  condicion         Condicion               @default(NOMBRADO)
+  dedicacion        Dedicacion              @default(TC_40H)
+  departamento      String                  @default("Departamento de Ingeniería de Sistemas")
+  escuela           String                  @default("Ingeniería de Sistemas")
+  facultad          String                  @default("Ingeniería")
+  cargasNoLectivas  CargaNoLectiva[]
+  disponibilidades  DisponibilidadDocente[]
+  horarios          Horario[]
+  cursos            Curso[]                 @relation("DocenteCursos")
 }
 
-enum Categoria {
-  principal
-  asociado
-  auxiliar
-  jefe_practica
-  contratado
-}
-
-enum Rol {
-  ADMIN
-  DOCENTE
-}
-
-// =========================
-// Cursos
-// =========================
 model Curso {
-  id       Int        @id @default(autoincrement())
-  nombre   String
-  tipo     TipoCurso
-  creditos Int
-  codigo   String?
-  ciclo    Int?       @default(1)
-  docentes Docente[]   @relation("DocenteCursos")
-
-  horarios Horario[]
+  id               Int       @id @default(autoincrement())
+  nombre           String
+  tipo             TipoCurso @default(teoria)
+  creditos         Int
+  ciclo            Int?
+  codigo           String?
+  horasLaboratorio Int       @default(0)
+  horasPractica    Int       @default(0)
+  horasTeoria      Int       @default(0)
+  horarios         Horario[]
+  docentes         Docente[] @relation("DocenteCursos")
 }
 
-enum TipoCurso {
-  teoria
-  laboratorio
-}
-
-// =========================
-// Aulas
-// =========================
 model Aula {
-  id       Int        @id @default(autoincrement())
-  nombre   String
-  tipo     TipoCurso
+  id        Int       @id @default(autoincrement())
+  nombre    String
+  tipo      TipoCurso
   capacidad Int
   ubicacion String?   @default("Pabellón de Sistemas")
-
-  horarios Horario[]
+  horarios  Horario[]
 }
 
-// =========================
-// Horarios
-// =========================
 model Horario {
-  id         Int        @id @default(autoincrement())
-  docente    Docente    @relation(fields: [docenteId], references: [id])
-  docenteId  Int
-  curso      Curso      @relation(fields: [cursoId], references: [id])
-  cursoId    Int
-  aula       Aula       @relation(fields: [aulaId], references: [id])
-  aulaId     Int
-  dia        Dia
-  horaInicio DateTime
-  horaFin    DateTime
-  tipoCurso  TipoCurso
-  grupo      String?
-  semestre   String     @default("2026-I")
+  id                 Int           @id @default(autoincrement())
+  docenteId          Int
+  cursoId            Int?
+  aulaId             Int?
+  dia                Dia
+  horaInicio         DateTime
+  horaFin            DateTime
+  tipoCurso          TipoCurso?
+  grupo              String?
+  semestre           String        @default("2026-I")
+  actividadNoLectiva String?
+  tipoActividad      TipoActividad @default(LECTIVA)
+  aula               Aula?         @relation(fields: [aulaId], references: [id])
+  curso              Curso?        @relation(fields: [cursoId], references: [id])
+  docente            Docente       @relation(fields: [docenteId], references: [id])
 }
 
-enum Dia {
-  Lunes
-  Martes
-  Miercoles
-  Jueves
-  Viernes
-  Sabado
-}
-
-// =========================
-// Reglas de Asignación
-// =========================
 model ReglaAsignacion {
-  id                Int    @id @default(autoincrement())
-  prioridadCategoria Json   // Ej: {"principal":1,"asociado":2,...}
-  duracionCurso     Int     // duración en minutos
+  id                 Int  @id @default(autoincrement())
+  prioridadCategoria Json
+  duracionCurso      Int
 }
 
-// =========================
-// Notificaciones de Disponibilidad
-// =========================
 model Notificacion {
   id        Int      @id @default(autoincrement())
   titulo    String
@@ -126,15 +91,85 @@ model Notificacion {
   createdAt DateTime @default(now())
 }
 
-// =========================
-// Disponibilidades por Semestre
-// =========================
 model DisponibilidadDocente {
-  id         Int      @id @default(autoincrement())
-  docente    Docente  @relation(fields: [docenteId], references: [id], onDelete: Cascade)
-  docenteId  Int
-  semestre   String
-  bloques    String   // JSON stringified: '[{"dia":"Lunes","bloque":"07:00-08:00"}, ...]'
+  id        Int     @id @default(autoincrement())
+  docenteId Int
+  semestre  String
+  bloques   String
+  docente   Docente @relation(fields: [docenteId], references: [id], onDelete: Cascade)
 
   @@unique([docenteId, semestre])
+}
+
+model CargaNoLectiva {
+  id                      Int     @id @default(autoincrement())
+  docenteId               Int
+  semestre                String
+  preparacionEvaluacion   Int     @default(0)
+  consejeria              Int     @default(0)
+  investigacion           Int     @default(0)
+  capacitacion            Int     @default(0)
+  gobierno                Int     @default(0)
+  administracion          Int     @default(0)
+  asesoriaTesis           Int     @default(0)
+  responsabilidadSocial   Int     @default(0)
+  comisiones              Int     @default(0)
+  otros                   Int     @default(0)
+  detallesConsejeria      String?
+  detallesInvestigacion   String?
+  detallesAsesoria        String?
+  detallesResponsabilidad String?
+  detallesComisiones      String?
+  docente                 Docente @relation(fields: [docenteId], references: [id])
+
+  @@unique([docenteId, semestre])
+}
+
+enum Categoria {
+  principal
+  asociado
+  auxiliar
+  jefe_practica
+  profesor
+  alumno
+}
+
+enum Condicion {
+  NOMBRADO
+  CONTRATADO
+}
+
+enum Dedicacion {
+  TC_40H
+  DE_EXCLUSIVA
+  TP_20H
+  TP
+  TP_8H
+  TP_10H
+  TP_12H
+  TP_16H
+}
+
+enum Rol {
+  ADMIN
+  DOCENTE
+}
+
+enum TipoCurso {
+  teoria
+  laboratorio
+}
+
+enum TipoActividad {
+  LECTIVA
+  NO_LECTIVA
+}
+
+enum Dia {
+  Lunes
+  Martes
+  Miercoles
+  Jueves
+  Viernes
+  Sabado
 }

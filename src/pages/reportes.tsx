@@ -362,7 +362,7 @@ const ReportesPage: React.FC = () => {
         
         if (docentes && docentes.length > 0) {
           // Sort docentes: Category priority, then entry date ascending (oldest first)
-          const categoryPriority = { principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, contratado: 5 };
+          const categoryPriority = { principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, profesor: 5, alumno: 6 };
           const sortedDocentes = [...docentes].sort((a: any, b: any) => {
             const prioA = (categoryPriority as any)[a.categoria] || 99;
             const prioB = (categoryPriority as any)[b.categoria] || 99;
