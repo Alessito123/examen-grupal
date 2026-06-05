@@ -20,20 +20,29 @@ import {
   MapPin,
   Building2,
   Printer,
+  Eye,
   ChevronRight,
   ChevronDown,
   Edit,
   X
 } from 'lucide-react';
 import DashboardLayout from '../layouts/DashboardLayout';
+import ModalPDF from '../components/ModalPDF';
 import { useAuth } from '../hooks/useAuth';
 import { trpc } from '../utils/trpc';
 import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import {
+  getCategoriaLabel,
+  getCondicionLabel,
+  getDedicacionLabel,
+  getSemestreDateLabels,
+  getSemestresDinamicos,
+  parseSemestreCodigo,
+} from '../utils/semestre';
 
-const SEMESTRES = ['2026-I', '2026-II', '2025-I', '2025-II'];
+const SEMESTRES = getSemestresDinamicos();
 
 const getHorarioDurationHours = (horario: any) => {
   const start = new Date(horario.horaInicio).getTime();
@@ -65,6 +74,20 @@ const formatHourValue = (value: number) => (
   Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '')
 );
 
+const getTargetHoursByDedicacion = (dedicacion?: string | null) => {
+  const targets: Record<string, number> = {
+    TC_40H: 40,
+    DE_EXCLUSIVA: 40,
+    TP_20H: 20,
+    TP_16H: 16,
+    TP_12H: 12,
+    TP_10H: 10,
+    TP_8H: 8,
+  };
+
+  return dedicacion ? targets[dedicacion] ?? null : 40;
+};
+
 const getComputedHorarioLoad = (horario: any) => {
   const duration = getHorarioDurationHours(horario);
 
@@ -85,16 +108,279 @@ const getComputedHorarioLoad = (horario: any) => {
   };
 };
 
+const PDF = {
+  width: 595.28,
+  height: 841.89,
+  left: 28.35,
+  right: 566.93,
+  bodyX: 45.35,
+  bodyW: 505,
+  rowH: 14.17,
+};
+
+type PdfFontStyle = 'normal' | 'bold' | 'italic' | 'bolditalic';
+
+type CellOptions = {
+  align?: 'left' | 'center' | 'right';
+  border?: boolean;
+  fill?: [number, number, number];
+  font?: 'times' | 'courier' | 'helvetica';
+  fontSize?: number;
+  lineHeight?: number;
+  padding?: number;
+  style?: PdfFontStyle;
+  valign?: 'top' | 'middle';
+};
+
+type TeachingPdfRow = {
+  codigo: string;
+  curso: string;
+  tipo: string;
+  escuela: string;
+  ciclo: string;
+  seccion: string;
+  alumnos: string;
+  teoriaHoras: number;
+  teoriaGrupos: number;
+  practicaHoras: number;
+  practicaGrupos: number;
+  laboratorioHoras: number;
+  laboratorioGrupos: number;
+  total: number;
+};
+
+const makePdfDoc = () => {
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  doc.setLineWidth(0.57);
+  doc.setTextColor(0, 0, 0);
+  return doc;
+};
+
+const titleCase = (value: string) => (
+  value ? value.charAt(0).toUpperCase() + value.slice(1) : value
+);
+
+const getPdfCurrentDate = () => {
+  const date = new Date();
+  const day = format(date, 'dd', { locale: es });
+  const month = titleCase(format(date, 'MMMM', { locale: es }));
+  const year = format(date, 'yyyy', { locale: es });
+  return `Trujillo, ${day} de ${month} del ${year}`;
+};
+
+const getDepartmentPdfLabel = (docente: any) => {
+  const value = docente?.departamento || 'Dpto. de Ingenieria de Sistemas';
+  return String(value)
+    .replace(/^Departamento\s+Academico\s+de/i, 'Dpto. de')
+    .replace(/^Departamento\s+Académico\s+de/i, 'Dpto. de')
+    .replace(/^Departamento\s+de/i, 'Dpto. de');
+};
+
+const getSchoolPdfLabel = (docente: any) => {
+  const value = docente?.escuela || 'Ingenieria de Sistemas';
+  return String(value)
+    .replace(/^Ingenieria de/i, 'Ing.')
+    .replace(/^Ingeniería de/i, 'Ing.');
+};
+
+const drawCell = (
+  doc: jsPDF,
+  text: string | number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: CellOptions = {}
+) => {
+  const {
+    align = 'left',
+    border = true,
+    fill,
+    font = 'times',
+    fontSize = 9,
+    lineHeight = fontSize + 3,
+    padding = 3,
+    style = 'normal',
+    valign = 'middle',
+  } = options;
+
+  doc.setFont(font, style);
+  doc.setFontSize(fontSize);
+
+  if (fill) {
+    doc.setFillColor(fill[0], fill[1], fill[2]);
+    doc.rect(x, y, width, height, border ? 'FD' : 'F');
+  } else if (border) {
+    doc.rect(x, y, width, height, 'S');
+  }
+
+  const rawLines = doc.splitTextToSize(String(text ?? ''), Math.max(1, width - padding * 2)) as string[];
+  const maxLines = Math.max(1, Math.floor((height - padding * 2) / lineHeight) || 1);
+  const lines = rawLines.slice(0, maxLines);
+  const textHeight = (lines.length - 1) * lineHeight;
+  const startY = valign === 'top'
+    ? y + padding + fontSize
+    : y + (height - textHeight) / 2 + fontSize * 0.35;
+  const textX = align === 'center' ? x + width / 2 : align === 'right' ? x + width - padding : x + padding;
+
+  lines.forEach((line, index) => {
+    doc.text(line, textX, startY + index * lineHeight, { align });
+  });
+};
+
+const splitPdfLines = (
+  doc: jsPDF,
+  text: string | number,
+  width: number,
+  options: Pick<CellOptions, 'font' | 'fontSize' | 'padding' | 'style'> = {}
+) => {
+  const {
+    font = 'times',
+    fontSize = 9,
+    padding = 3,
+    style = 'normal',
+  } = options;
+
+  doc.setFont(font, style);
+  doc.setFontSize(fontSize);
+  return doc.splitTextToSize(String(text ?? ''), Math.max(1, width - padding * 2)) as string[];
+};
+
+const drawParagraph = (
+  doc: jsPDF,
+  text: string,
+  x: number,
+  y: number,
+  width = PDF.bodyW,
+  options: {
+    fontSize?: number;
+    lineHeight?: number;
+    style?: PdfFontStyle;
+    indent?: boolean;
+    gapAfter?: number;
+  } = {}
+) => {
+  const {
+    fontSize = 10,
+    lineHeight = 17,
+    style = 'normal',
+    indent = false,
+    gapAfter = 17,
+  } = options;
+  const content = indent ? `        ${text}` : text;
+  doc.setFont('times', style);
+  doc.setFontSize(fontSize);
+  const lines = doc.splitTextToSize(content, width) as string[];
+  doc.text(lines, x, y);
+  return y + (lines.length * lineHeight) + gapAfter;
+};
+
+const truncatePdfText = (value: string, maxLength: number) => {
+  if (!value) return '';
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
+};
+
+const formatLoadCell = (hours: number, groups: number) => (
+  `${formatHourValue(hours)} x ${groups}`
+);
+
+const buildTeachingPdfRows = (horarios: any[], docente: any): TeachingPdfRow[] => {
+  const grouped = new Map<string, {
+    curso: any;
+    escuela: string;
+    alumnos: number | null;
+    theoryDuration: number;
+    labDuration: number;
+    theoryGroups: Set<string>;
+    labGroups: Set<string>;
+  }>();
+
+  horarios.forEach((horario) => {
+    const key = String(horario.cursoId || horario.curso?.codigo || horario.curso?.nombre || horario.id);
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        curso: horario.curso,
+        escuela: getSchoolPdfLabel(docente),
+        alumnos: typeof horario.aula?.capacidad === 'number' ? horario.aula.capacidad : null,
+        theoryDuration: 0,
+        labDuration: 0,
+        theoryGroups: new Set<string>(),
+        labGroups: new Set<string>(),
+      });
+    }
+
+    const item = grouped.get(key)!;
+    const groupLabel = horario.grupo || 'A';
+    const duration = getHorarioDurationHours(horario);
+    if (typeof horario.aula?.capacidad === 'number') {
+      item.alumnos = Math.max(item.alumnos || 0, horario.aula.capacidad);
+    }
+
+    if (horario.tipoCurso === 'laboratorio') {
+      item.labDuration += duration;
+      item.labGroups.add(groupLabel);
+    } else {
+      item.theoryDuration += duration;
+      item.theoryGroups.add(groupLabel);
+    }
+  });
+
+  return Array.from(grouped.values()).map((item) => {
+    const curso = item.curso || {};
+    const theoryGroupCount = item.theoryGroups.size;
+    const labGroupCount = item.labGroups.size;
+    const theoryPerGroup = theoryGroupCount > 0 ? item.theoryDuration / theoryGroupCount : 0;
+    const labPerGroup = labGroupCount > 0 ? item.labDuration / labGroupCount : 0;
+    const split = splitTeoriaPracticaHours(theoryPerGroup);
+    const teoriaHoras = Number(curso.horasTeoria || 0) || split.horasTeoria;
+    const practicaHoras = Number(curso.horasPractica || 0) || split.horasPractica;
+    const laboratorioHoras = Number(curso.horasLaboratorio || 0) || labPerGroup;
+    const groups = Array.from(new Set([...item.theoryGroups, ...item.labGroups]));
+
+    return {
+      codigo: curso.codigo || '',
+      curso: truncatePdfText(String(curso.nombre || '').toUpperCase(), 31),
+      tipo: 'OB',
+      escuela: truncatePdfText(item.escuela, 16),
+      ciclo: curso.ciclo ? String(curso.ciclo) : '',
+      seccion: groups.length > 0 ? groups.join(', ') : 'A',
+      alumnos: item.alumnos ? String(item.alumnos) : '50',
+      teoriaHoras,
+      teoriaGrupos: theoryGroupCount > 0 ? theoryGroupCount : 0,
+      practicaHoras,
+      practicaGrupos: theoryGroupCount > 0 ? theoryGroupCount : 0,
+      laboratorioHoras,
+      laboratorioGrupos: labGroupCount,
+      total:
+        (teoriaHoras * (theoryGroupCount > 0 ? theoryGroupCount : 0)) +
+        (practicaHoras * (theoryGroupCount > 0 ? theoryGroupCount : 0)) +
+        (laboratorioHoras * labGroupCount),
+    };
+  });
+};
+
 const CargaHorariaPage: React.FC = () => {
   const { user } = useAuth();
   const [selectedSemestre, setSelectedSemestre] = useState('2026-I');
   const [showNotification, setShowNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [liveValidationVisible, setLiveValidationVisible] = useState(false);
+  const [dismissedValidationKey, setDismissedValidationKey] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   // Queries
   const docenteQuery = trpc.docentes.getById.useQuery({ id: user?.id || 0 }, { enabled: !!user?.id });
@@ -103,6 +389,16 @@ const CargaHorariaPage: React.FC = () => {
     { enabled: !!user?.id }
   );
   const horariosQuery = trpc.horarios.getAll.useQuery();
+  const semestresQuery = trpc.semestres.getAll.useQuery();
+  const semestreQuery = trpc.semestres.getByCodigo.useQuery(
+    { codigo: selectedSemestre },
+    { enabled: /^\d{4}-(I|II)$/.test(selectedSemestre) }
+  );
+
+  const semestreOptions = React.useMemo(() => {
+    const configured = semestresQuery.data?.map((semestre: any) => semestre.codigo) || [];
+    return Array.from(new Set([...configured, ...SEMESTRES]));
+  }, [semestresQuery.data]);
 
   // Mutations
   const updateDocente = trpc.docentes.update.useMutation({
@@ -162,6 +458,8 @@ const CargaHorariaPage: React.FC = () => {
     otros: 0,
     detallesConsejeria: '',
     detallesInvestigacion: '',
+    detallesGobierno: '',
+    detallesAdministracion: '',
     detallesAsesoria: '',
     detallesResponsabilidad: '',
     detallesComisiones: '',
@@ -182,6 +480,8 @@ const CargaHorariaPage: React.FC = () => {
         otros: cargaNoLectivaQuery.data.otros,
         detallesConsejeria: cargaNoLectivaQuery.data.detallesConsejeria || '',
         detallesInvestigacion: cargaNoLectivaQuery.data.detallesInvestigacion || '',
+        detallesGobierno: (cargaNoLectivaQuery.data as any).detallesGobierno || '',
+        detallesAdministracion: (cargaNoLectivaQuery.data as any).detallesAdministracion || '',
         detallesAsesoria: cargaNoLectivaQuery.data.detallesAsesoria || '',
         detallesResponsabilidad: cargaNoLectivaQuery.data.detallesResponsabilidad || '',
         detallesComisiones: cargaNoLectivaQuery.data.detallesComisiones || '',
@@ -211,6 +511,107 @@ const CargaHorariaPage: React.FC = () => {
     formData.otros;
 
   const grandTotal = totalTeachingHours + totalNonTeachingHours;
+  const semestreParts = parseSemestreCodigo(selectedSemestre);
+  const semestreDateLabels = getSemestreDateLabels(semestreQuery.data as any);
+  const targetHours = getTargetHoursByDedicacion((docenteQuery.data as any)?.dedicacion);
+  const remainingHours = targetHours === null ? 0 : targetHours - grandTotal;
+  const validationState = React.useMemo(() => {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    const hourValues = [
+      formData.preparacionEvaluacion,
+      formData.consejeria,
+      formData.investigacion,
+      formData.capacitacion,
+      formData.gobierno,
+      formData.administracion,
+      formData.asesoriaTesis,
+      formData.responsabilidadSocial,
+      formData.comisiones,
+      formData.otros,
+    ];
+
+    if (hourValues.some((value) => value < 0)) {
+      errors.push('Las horas no pueden ser negativas.');
+    }
+
+    if (targetHours !== null && grandTotal > targetHours) {
+      errors.push(`La carga total excede ${targetHours} horas para ${getDedicacionLabel((docenteQuery.data as any)?.dedicacion)}.`);
+    }
+
+    if (formData.capacitacion > 5) {
+      errors.push('Capacitación no puede superar 5 horas semanales.');
+    }
+
+    if (formData.responsabilidadSocial > 2) {
+      errors.push('Responsabilidad social universitaria no puede superar 2 horas semanales.');
+    }
+
+    if (formData.gobierno > 0 && !formData.detallesGobierno.trim()) {
+      errors.push('Indica el cargo o actividad del rubro 06 - Actividades de gobierno.');
+    }
+
+    if (formData.administracion > 0 && !formData.detallesAdministracion.trim()) {
+      errors.push('Indica el cargo o actividad del rubro 07 - Actividades de administración.');
+    }
+
+    if (formData.comisiones > 0 && !formData.detallesComisiones.trim()) {
+      errors.push('Indica la resolución y vigencia del rubro 10 - Comités técnicos y comisiones.');
+    }
+
+    if (targetHours !== null && grandTotal < targetHours) {
+      warnings.push(`Faltan ${formatHourValue(targetHours - grandTotal)} horas para completar ${targetHours} horas.`);
+    }
+
+    if (totalTeachingHours > 0 && formData.preparacionEvaluacion > Math.ceil(totalTeachingHours / 2)) {
+      warnings.push('Preparación y evaluación supera el 50% referencial del trabajo lectivo.');
+    }
+
+    if (formData.consejeria === 0) {
+      warnings.push('Consejería y tutoría registra 0 horas; el formato antiguo considera mínimo 1 hora semanal.');
+    }
+
+    const condicion = (docenteQuery.data as any)?.condicion;
+    const dedicacion = (docenteQuery.data as any)?.dedicacion;
+    const minInvestigacion = condicion === 'NOMBRADO'
+      ? dedicacion === 'DE_EXCLUSIVA'
+        ? 5
+        : dedicacion === 'TC_40H'
+          ? 4
+          : 0
+      : 0;
+
+    if (minInvestigacion > 0 && formData.investigacion < minInvestigacion) {
+      warnings.push(`Investigación recomienda mínimo ${minInvestigacion} horas para docentes ordinarios.`);
+    }
+
+    return { errors, warnings };
+  }, [docenteQuery.data, formData, grandTotal, targetHours, totalTeachingHours]);
+  const totalStatusClass = targetHours !== null && grandTotal > targetHours
+    ? 'text-red-500'
+    : targetHours !== null && grandTotal === targetHours
+      ? 'text-emerald-500'
+      : 'text-purple-600';
+  const validationErrorKey = validationState.errors.join('||');
+
+  useEffect(() => {
+    if (!validationErrorKey) {
+      setLiveValidationVisible(false);
+      setDismissedValidationKey('');
+      return;
+    }
+
+    if (dismissedValidationKey === validationErrorKey) {
+      return;
+    }
+
+    setLiveValidationVisible(true);
+    const timeoutId = window.setTimeout(() => {
+      setLiveValidationVisible(false);
+    }, 6500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [dismissedValidationKey, validationErrorKey]);
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -218,6 +619,12 @@ const CargaHorariaPage: React.FC = () => {
 
   const handleSave = () => {
     if (!user?.id) return;
+    if (validationState.errors.length > 0) {
+      setDismissedValidationKey('');
+      setLiveValidationVisible(true);
+      setShowNotification({ type: 'error', message: 'Corrige las validaciones visibles antes de guardar.' });
+      return;
+    }
     saveCargaNoLectiva.mutate({
       docenteId: user.id,
       semestre: selectedSemestre,
@@ -240,215 +647,263 @@ const CargaHorariaPage: React.FC = () => {
 
   // PDF Generation Logic (Format 1)
   const generateFormat1 = () => {
-    const doc = new jsPDF();
+    const doc = makePdfDoc();
     const d = docenteQuery.data;
-    if (!d) return;
+    if (!d) return null;
 
-    // Header
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('FORMATO N° 1', 105, 15, { align: 'center' });
-    doc.text('DECLARACION DE CARGA HORARIA ASIGNADA', 105, 22, { align: 'center' });
+    const docenteAny = d as any;
+    const facultad = docenteAny.facultad || 'Ingenieria';
+    const departamento = getDepartmentPdfLabel(docenteAny);
+    const modalidad = getDedicacionLabel(docenteAny.dedicacion);
+    const teachingRows = buildTeachingPdfRows(teachingHorarios, docenteAny);
+    const teachingTotal = teachingRows.reduce((sum, row) => sum + row.total, 0);
+    const pdfGrandTotal = teachingTotal + totalNonTeachingHours;
+
+    doc.setFont('times', 'normal');
+    doc.setFontSize(12);
+    doc.text('FORMATO N° 1', PDF.width / 2, 39, { align: 'center' });
+    doc.text('DECLARACION DE CARGA HORARIA ASIGNADA', PDF.width / 2, 53, { align: 'center' });
+    doc.text('I. DATOS SOBRE LA SITUACION DEL PROFESOR:', PDF.left + 3, 83);
 
     doc.setFontSize(10);
-    doc.text('I. DATOS SOBRE LA SITUACION DEL PROFESOR:', 15, 35);
-    
-    // Info grid
-    doc.setFont('helvetica', 'normal');
-    doc.text(`FACULTAD: ${(d as any).facultad || 'Ingeniería'}`, 15, 42);
-    doc.text(`DPTO. ACADEMICO: ${(d as any).departamento || 'Dpto. de Ingeniería de Sistemas'}`, 100, 42);
-    
-    const tableData = [
-      ['NOMBRE COMPLETO', 'CONDICION', 'CATEGORIA', 'MODALIDAD'],
-      [d.nombre.toUpperCase(), (d as any).condicion || 'NOMBRADO', d.categoria.toUpperCase(), ((d as any).dedicacion || 'TC_40H').replace('_', ' ')]
+    doc.text('FACULTAD:', 42.52, 98);
+    drawCell(doc, facultad, 102.05, 87.9, 464.88, PDF.rowH, { border: false, fill: [237, 237, 237], fontSize: 10, align: 'center' });
+    doc.text('DPTO. ACADEMICO:', 42.52, 115);
+    drawCell(doc, departamento, 147.41, 104.9, 419.52, PDF.rowH, { border: false, fill: [237, 237, 237], fontSize: 10, align: 'center' });
+
+    const infoY = 133.23;
+    drawCell(doc, 'NOMBRE COMPLETO', 28.35, infoY, 240.94, PDF.rowH, { fontSize: 9, style: 'bold' });
+    drawCell(doc, 'CONDICION', 269.29, infoY, 99.21, PDF.rowH, { fontSize: 9, style: 'bold', align: 'center' });
+    drawCell(doc, 'CATEGORIA', 368.51, infoY, 99.21, PDF.rowH, { fontSize: 9, style: 'bold', align: 'center' });
+    drawCell(doc, 'MODALIDAD', 467.72, infoY, 99.21, PDF.rowH, { fontSize: 9, style: 'bold', align: 'center' });
+    drawCell(doc, d.nombre.toUpperCase(), 28.35, infoY + PDF.rowH, 240.94, PDF.rowH, { fontSize: 10 });
+    drawCell(doc, getCondicionLabel(docenteAny.condicion), 269.29, infoY + PDF.rowH, 99.21, PDF.rowH, { fontSize: 10, align: 'center' });
+    drawCell(doc, getCategoriaLabel(d.categoria), 368.51, infoY + PDF.rowH, 99.21, PDF.rowH, { fontSize: 10, align: 'center' });
+    drawCell(doc, modalidad, 467.72, infoY + PDF.rowH, 99.21, PDF.rowH, { fontSize: 9, align: 'center' });
+
+    const periodY = infoY + PDF.rowH * 2;
+    drawCell(doc, `AÑO ACADEMICO:     ${semestreParts.anio}     CICLO(SEM):    ${semestreParts.ciclo}`, 28.35, periodY, 283.46, PDF.rowH, { border: false, fill: [237, 237, 237], fontSize: 10 });
+    drawCell(doc, `INICIO: ${semestreDateLabels.inicio}   -   FINAL: ${semestreDateLabels.fin}`, 311.81, periodY, 255.12, PDF.rowH, { border: false, fill: [237, 237, 237], fontSize: 10, align: 'center' });
+
+    let y = 192.76;
+    drawCell(doc, '1. TRABAJO LECTIVO.- Datos completos y con claridad', 28.35, y, 538.58, PDF.rowH, { fontSize: 9, fill: [237, 237, 237] });
+    y += PDF.rowH;
+
+    const cols = [
+      { label: 'CODIGO', x: 28.35, w: 42.52 },
+      { label: 'NOMBRE DEL CURSO', x: 70.87, w: 170.08 },
+      { label: 'CUR.', x: 240.95, w: 28.35 },
+      { label: 'ESCUELA PROF.', x: 269.29, w: 85.04 },
+      { label: 'CIC.', x: 354.33, w: 22.68 },
+      { label: 'SEC.', x: 377.01, w: 22.68 },
+      { label: 'N° AL.', x: 399.69, w: 28.35 },
+      { label: 'H.T.', x: 428.04, w: 36.85 },
+      { label: 'H.P.', x: 464.89, w: 36.85 },
+      { label: 'H.L.', x: 501.74, w: 36.85 },
+      { label: 'Total', x: 538.59, w: 28.34 },
     ];
-    
-    autoTable(doc, {
-      startY: 47,
-      head: [tableData[0]],
-      body: [tableData[1]],
-      theme: 'grid',
-      styles: { fontSize: 8, halign: 'center' },
-      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] }
-    });
+    cols.forEach((col) => drawCell(doc, col.label, col.x, y, col.w, PDF.rowH, { fontSize: 9, align: 'center' }));
+    y += PDF.rowH;
 
-    const currentY = (doc as any).lastAutoTable.finalY + 10;
-    doc.setFont('helvetica', 'bold');
-    doc.text(`AÑO ACADÉMICO: ${selectedSemestre.split('-')[0]}   CICLO(SEM): ${selectedSemestre.split('-')[1]}`, 15, currentY);
+    if (teachingRows.length === 0) {
+      drawCell(doc, '', 28.35, y, 42.52, PDF.rowH, { font: 'courier', fontSize: 8, align: 'center' });
+      drawCell(doc, 'SIN CARGA LECTIVA ASIGNADA', 70.87, y, 170.08, PDF.rowH, { font: 'courier', fontSize: 8 });
+      cols.slice(2).forEach((col) => drawCell(doc, '', col.x, y, col.w, PDF.rowH, { font: 'courier', fontSize: 8, align: 'center' }));
+      y += PDF.rowH;
+    } else {
+      teachingRows.forEach((row) => {
+        const values = [
+          row.codigo,
+          row.curso,
+          row.tipo,
+          row.escuela,
+          row.ciclo,
+          row.seccion,
+          row.alumnos,
+          formatLoadCell(row.teoriaHoras, row.teoriaGrupos),
+          formatLoadCell(row.practicaHoras, row.practicaGrupos),
+          formatLoadCell(row.laboratorioHoras, row.laboratorioGrupos),
+          formatHourValue(row.total),
+        ];
+        cols.forEach((col, index) => drawCell(doc, values[index], col.x, y, col.w, PDF.rowH, {
+          font: 'courier',
+          fontSize: index === 1 || index === 3 ? 8 : 9,
+          align: index === 1 || index === 3 ? 'left' : 'center',
+        }));
+        y += PDF.rowH;
+      });
+    }
 
-    // 1. Trabajo Lectivo
-    doc.text('1. TRABAJO LECTIVO.- Datos completos y con claridad', 15, currentY + 10);
-    
-    const lectivoHeaders = ['CÓDIGO', 'NOMBRE DEL CURSO', 'ESCUELA', 'CIC.', 'SEC.', 'AL.', 'H.T.', 'H.P.', 'H.L.', 'Total'];
-    const lectivoBody = teachingHorarios.map(h => {
-      const courseLoad = getComputedHorarioLoad(h);
-      return [
-      h.curso?.codigo || '',
-      h.curso?.nombre || '',
-      (d as any).escuela || 'Ingeniería de Sistemas',
-      h.curso?.ciclo || '',
-      h.grupo || 'A',
-      '50', // Mock alumnos
-      formatHourValue(courseLoad.horasTeoria),
-      formatHourValue(courseLoad.horasPractica),
-      formatHourValue(courseLoad.horasLaboratorio),
-      formatHourValue(courseLoad.total)
-    ];
-    });
-
-    autoTable(doc, {
-      startY: currentY + 15,
-      head: [lectivoHeaders],
-      body: lectivoBody,
-      theme: 'grid',
-      styles: { fontSize: 7, halign: 'center' },
-      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] }
-    });
-
-    // 2-10 items
-    let rubroY = (doc as any).lastAutoTable.finalY + 10;
     const rubros = [
-      { id: 2, label: 'PREPARACION Y EVALUACION', val: formData.preparacionEvaluacion, detail: '' },
-      { id: 3, label: 'CONSEJERIA', val: formData.consejeria, detail: formData.detallesConsejeria },
-      { id: 4, label: 'INVESTIGACION', val: formData.investigacion, detail: formData.detallesInvestigacion },
-      { id: 5, label: 'CAPACITACION', val: formData.capacitacion, detail: '' },
-      { id: 6, label: 'ACTIVIDADES DE GOBIERNO', val: formData.gobierno, detail: '' },
-      { id: 7, label: 'ACTIVIDADES DE ADMINISTRACION', val: formData.administracion, detail: '' },
-      { id: 8, label: 'ASESORIA DE TESIS', val: formData.asesoriaTesis, detail: formData.detallesAsesoria },
-      { id: 9, label: 'RESPONSABILIDAD SOCIAL', val: formData.responsabilidadSocial, detail: formData.detallesResponsabilidad },
-      { id: 10, label: 'COMITES TECNICOS Y COMISIONES', val: formData.comisiones, detail: formData.detallesComisiones },
+      { id: 2, label: 'PREPARACION Y EVALUACION (Max 50% de Trabajo Lectivo)', val: formData.preparacionEvaluacion, detail: '', minLines: 2 },
+      { id: 3, label: 'CONSEJERIA: Señalar número de alumnos y el ciclo académico con los que se desarrolla. (Como mínimo una 01 hora semanal).', val: formData.consejeria, detail: formData.detallesConsejeria, minLines: 3 },
+      { id: 4, label: 'INVESTIGACION: Consignar el N° de inscripción, código, nombre y duración del proyecto. (Como mínimo 04 y 05 horas semanales, según modalidad de trabajo de docentes ordinarios).', val: formData.investigacion, detail: formData.detallesInvestigacion, minLines: 3 },
+      { id: 5, label: 'CAPACITACION: Señale lo referente a este rubro en el marco de los planes de cada Facultad (como máximo  05 semanales).', val: formData.capacitacion, detail: '', minLines: 3 },
+      { id: 6, label: 'ACTIVIDADES DE GOBIERNO: Si desempeña cargo indique.', val: formData.gobierno, detail: formData.detallesGobierno, minLines: 2 },
+      { id: 7, label: 'ACTIVIDADES DE ADMINISTRACION: Si desempeña cargo indique.', val: formData.administracion, detail: formData.detallesAdministracion, minLines: 2 },
+      { id: 8, label: 'ASESORIA  DE TESIS, EXAMENES PROFESIONALES Y EXPERIENCIA PROFESIONAL: Indicar el número de Resolución Decanal, precisando el nombre y duración de la actividad programada.', val: formData.asesoriaTesis, detail: formData.detallesAsesoria, minLines: 4 },
+      { id: 9, label: 'RESPONSABILIDAD SOCIAL UNIVERSITARIA: Señalar actividad, proyecto programa a ejecutarse n beneficio de la comunidad local o regional. (Como máximo 02 horas semanales)', val: formData.responsabilidadSocial, detail: formData.detallesResponsabilidad, minLines: 3 },
+      { id: 10, label: 'COMITES TECNICOS Y COMISIONES: Consignar el número de Resolución autoritativa indicando el lapso de vigencia.', val: formData.comisiones, detail: formData.detallesComisiones, minLines: 3 },
     ];
 
-    rubros.forEach(r => {
-      if (rubroY > 260) {
+    rubros.forEach((rubro) => {
+      if (y > 695) {
         doc.addPage();
-        rubroY = 20;
+        y = 35;
       }
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${r.id}. ${r.label}:`, 15, rubroY);
-      doc.text(`${r.val}`, 180, rubroY, { align: 'right' });
-      if (r.detail) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        const splitDetail = doc.splitTextToSize(r.detail, 150);
-        doc.text(splitDetail, 20, rubroY + 5);
-        rubroY += (splitDetail.length * 4) + 8;
-      } else {
-        rubroY += 8;
-      }
+      const leftLines = splitPdfLines(doc, `${rubro.id}. ${rubro.label}`, 240.94, { fontSize: 9 });
+      const detailLines = rubro.detail ? splitPdfLines(doc, rubro.detail, 260.79, { font: 'courier', fontSize: 8 }) : [];
+      const lineCount = Math.max(rubro.minLines, leftLines.length, detailLines.length || 1);
+      const rowHeight = Math.max(PDF.rowH, lineCount * PDF.rowH);
+      drawCell(doc, `${rubro.id}. ${rubro.label}`, 28.35, y, 240.94, rowHeight, {
+        fill: [237, 237, 237],
+        fontSize: 9,
+        valign: 'top',
+      });
+      drawCell(doc, rubro.detail || '', 269.29, y, 260.79, rowHeight, {
+        font: 'courier',
+        fontSize: 8,
+        valign: 'top',
+      });
+      drawCell(doc, formatHourValue(rubro.val), 530.08, y, 36.85, rowHeight, { fontSize: 9, align: 'center' });
+      y += rowHeight;
     });
 
-    doc.setFont('helvetica', 'bold');
-    doc.text(`TOTAL: ${grandTotal}`, 180, rubroY + 10, { align: 'right' });
+    drawCell(doc, 'TOTAL', 28.35, y, 501.73, PDF.rowH, { fontSize: 9, align: 'right' });
+    drawCell(doc, formatHourValue(pdfGrandTotal), 530.08, y, 36.85, PDF.rowH, { fontSize: 9, align: 'center' });
+    y += PDF.rowH;
 
-    // Footer
-    const footerY = 270;
+    if (y > 650) {
+      doc.addPage();
+      y = 40;
+    }
+
+    const dateY = y + 18;
+    doc.setFont('times', 'normal');
     doc.setFontSize(9);
-    doc.text(`Trujillo, ${format(new Date(), "dd 'de' MMMM 'del' yyyy", { locale: es })}`, 15, footerY - 20);
-    doc.line(15, footerY, 70, footerY);
-    doc.text('Firma del Profesor', 42.5, footerY + 5, { align: 'center' });
-    
-    doc.line(120, footerY, 185, footerY);
-    doc.text('Firma del Director de Dpto.', 152.5, footerY + 5, { align: 'center' });
+    doc.text(getPdfCurrentDate(), 370.56, dateY);
+    doc.text('   __________________________________', 61.86, dateY + 38);
+    doc.text(' Firma del Profesor ', 105.74, dateY + 56);
+    doc.text('   __________________________________', 61.86, dateY + 108);
+    doc.text(' Firma del Director de Dpto. ', 89.37, dateY + 126);
+    doc.text('________________________________', 371.34, dateY + 140);
+    doc.text('V° B° DECANO FAC.', 405.36, dateY + 154);
 
-    doc.save(`Formato_1_${d.nombre.replace(' ', '_')}.pdf`);
+    return {
+      doc,
+      filename: `Formato_1_${d.nombre.replace(/\s+/g, '_')}.pdf`,
+    };
   };
 
   const generateFormat2 = () => {
-    const doc = new jsPDF();
+    const doc = makePdfDoc();
     const d = docenteQuery.data;
-    if (!d) return;
+    if (!d) return null;
 
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('FORMATO N° 2', 105, 20, { align: 'center' });
-    doc.text('DECLARACION JURADA DE NO ESTAR INCURSO EN CAUSALES', 105, 30, { align: 'center' });
-    doc.text('DE INCOMPATIBILIDAD O IMPEDIMENTO LABORAL', 105, 37, { align: 'center' });
+    const docenteAny = d as any;
+    const departamento = getDepartmentPdfLabel(docenteAny);
+    const facultad = docenteAny.facultad || 'Ingenieria';
+    const periodo = `Semestre Academico ${selectedSemestre} (INICIO: ${semestreDateLabels.inicio} - FINAL: ${semestreDateLabels.fin})`;
+
+    doc.setFont('times', 'normal');
+    doc.setFontSize(12);
+    doc.text('FORMATO N° 2', PDF.width / 2, 46.12, { align: 'center' });
+    doc.text('DECLARACION JURADA DE NO ESTAR INCURSO EN CAUSALES', PDF.width / 2, 67.38, { align: 'center' });
+    doc.text('DE INCOMPATIBILIDAD O IMPEDIMENTO LABORAL', PDF.width / 2, 81.55, { align: 'center' });
+
+    let y = 130.56;
+    y = drawParagraph(doc, `Yo, ${d.nombre.toUpperCase()} identificado con DNI. Nro ${d.dni || '________'} con Código IBM Nro ${docenteAny.codigoIBM || '____'} del Departamento Académico ${departamento} Facultad de ${facultad}; para el ${periodo}, en el marco del programa de Homologación de la remuneración de los docentes universitarios, dispuesto por el D.U. Nro 033-2006 y D.S. Nro 019-2006-EF, DECLARO BAJO JURAMENTO Y EN HONOR A LA VERDAD, que:`, PDF.bodyX, y, PDF.bodyW, { indent: true });
+    y = drawParagraph(doc, 'NO ESTOY INCURSO en causales de incompatibilidad laboral y NO TENGO impedimento para ejercer la docencia en la Universidad Nacional de Trujillo, de conformidad con lo previsto en el capitulo VII de las Incompatibilidades e Impedimentos, del Titulo VI: Los Profesores, del Estatuto Institucional vigente.', PDF.bodyX, y, PDF.bodyW, { indent: true });
+    y = drawParagraph(doc, `Soy docente ${getCondicionLabel(docenteAny.condicion)}, a ${getDedicacionLabel(docenteAny.dedicacion)} y NO desempeño cargo público o privado en horas que coincidan con el horario establecido en la Universidad Nacional de Trujillo (De conformidad con los articulos 270ro y 277ro del Estatuto Institucional vigente).`, PDF.bodyX, y, PDF.bodyW, { indent: true });
+    y = drawParagraph(doc, 'EN CASO DE FALTAR A LA VERDAD ME SOMETO A LAS SANCIONES QUE SEAN APLICABLES DE ACUERDO A LEY; ASIMISMO, DE ENCONTRARME  INCURSO EN SITUACION DE INCOMPATIBILIDAD O IMPEDIMENTO PARA EJERCER LA DOCENCIA EN LA U.N.T., ME SOMETO A LAS SANCIONES PREVISTAS POR SU ESTATUTO,', PDF.bodyX, y, PDF.bodyW, { indent: true, gapAfter: 0 });
+    drawParagraph(doc, 'Y AUTORIZO AL FUNCIONARIO COMPETENTE DISPONGA EL DESCUENTO DE MI PLANILLA DE HABERES, DEL MONTO QUE LA UNIDAD DE REMUNERACIONES LIQUIDE COMO PAGOS INDEBIDOS POR EL LAPSO DE TIEMPO LABORADO ILEGALMENTE.', PDF.bodyX, y, PDF.bodyW, { style: 'bolditalic', gapAfter: 0 });
+
+    doc.setFont('times', 'normal');
+    doc.setFontSize(12);
+    doc.text(getPdfCurrentDate(), 405.27, 499.66);
+    doc.text('__________________________________', 289.23, 573.36);
+    doc.text('FIRMA DEL DECLARANTE', 317.56, 590.37);
+    doc.text(`DNI: ${d.dni || ''}`, 346.7, 607.38);
 
     doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    const introText = `Yo, ${d.nombre.toUpperCase()} identificado con DNI. Nro ${d.dni || '________'} con Código IBM Nro ${(d as any).codigoIBM || '____'} del Departamento Académico ${(d as any).departamento || 'Dpto. de Ingeniería de Sistemas'} Facultad de ${(d as any).facultad || 'Ingeniería'}; en el marco del programa de Homologación de la remuneración de los docentes universitarios, dispuesto por el D.U. Nro 033-2006 y D.S. Nro 019-2006-EF, DECLARO BAJO JURAMENTO Y EN HONOR A LA VERDAD, que:`;
-    
-    const splitIntro = doc.splitTextToSize(introText, 180);
-    doc.text(splitIntro, 15, 55);
+    const note = 'Nota: Los docentes deben suscribir de forma obligatoria el presente formato en cada Semestre Académico, en el reverso de la Declaracion de Carga Horaria Asignada';
+    doc.text(doc.splitTextToSize(note, PDF.bodyW) as string[], PDF.bodyX, 781.11);
 
-    const bodyText = [
-        'NO ESTOY INCURSO en causales de incompatibilidad laboral y NO TENGO impedimento para ejercer la docencia en la Universidad Nacional de Trujillo, de conformidad con lo previsto en el capitulo VII de las Incompatibilidades e Impedimentos, del Titulo VI: Los Profesores, del Estatuto Institucional vigente.',
-        `Soy docente ${(d as any).condicion || 'Nombrado'}, a ${((d as any).dedicacion || 'TC_40H').replace('_', ' ')} y NO desempeño cargo público o privado en horas que coincidan con el horario establecido en la Universidad Nacional de Trujillo (De conformidad con los articulos 270ro y 277ro del Estatuto Institucional vigente).`,
-        'EN CASO DE FALTAR A LA VERDAD ME SOMETO A LAS SANCIONES QUE SEAN APLICABLES DE ACUERDO A LEY; ASIMISMO, DE ENCONTRARME INCURSO EN SITUACION DE INCOMPATIBILIDAD O IMPEDIMENTO PARA EJERCER LA DOCENCIA EN LA U.N.T., ME SOMETO A LAS SANCIONES PREVISTAS POR SU ESTATUTO, Y AUTORIZO AL FUNCIONARIO COMPETENTE DISPONGA EL DESCUENTO DE MI PLANILLA DE HABERES, DEL MONTO QUE LA UNIDAD DE REMUNERACIONES LIQUIDE COMO PAGOS INDEBIDOS POR EL LAPSO DE TIEMPO LABORADO ILEGALMENTE.'
-    ];
-
-    let currentY = 55 + (splitIntro.length * 5) + 10;
-    bodyText.forEach(text => {
-        const splitText = doc.splitTextToSize(text, 180);
-        doc.text(splitText, 15, currentY);
-        currentY += (splitText.length * 5) + 8;
-    });
-
-    doc.text(`Trujillo, ${format(new Date(), "dd 'de' MMMM 'del' yyyy", { locale: es })}`, 15, currentY + 10);
-    
-    doc.line(70, currentY + 40, 140, currentY + 40);
-    doc.text('FIRMA DEL DECLARANTE', 105, currentY + 45, { align: 'center' });
-    doc.text(`DNI: ${d.dni || ''}`, 105, currentY + 50, { align: 'center' });
-
-    doc.save(`Formato_2_${d.nombre.replace(' ', '_')}.pdf`);
+    return {
+      doc,
+      filename: `Formato_2_${d.nombre.replace(/\s+/g, '_')}.pdf`,
+    };
   };
 
   const generateFormat3 = () => {
-    const doc = new jsPDF();
+    const doc = makePdfDoc();
     const d = docenteQuery.data;
-    if (!d) return;
+    if (!d) return null;
 
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('FORMATO N° 3', 105, 20, { align: 'center' });
-    doc.text('DECLARACION JURADA DE SEDES DESCENTRALIZADAS', 105, 30, { align: 'center' });
+    const docenteAny = d as any;
+    const departamento = getDepartmentPdfLabel(docenteAny);
+    const facultad = docenteAny.facultad || 'Ingenieria';
+    const periodo = `Semestre Academico ${selectedSemestre} (INICIO: ${semestreDateLabels.inicio} - FINAL: ${semestreDateLabels.fin})`;
 
-    const docenteData = [
-      ['NOMBRE COMPLETO', d.nombre.toUpperCase()],
-      ['DNI', d.dni || '________'],
-      ['CODIGO IBM', (d as any).codigoIBM || '________'],
-      ['CONDICION', (d as any).condicion || 'NOMBRADO'],
-      ['CATEGORIA', getDocenteDisplayCategory(d.categoria)],
-      ['DEDICACION', ((d as any).dedicacion || 'TC_40H').replace('_', ' ')],
-      ['SEMESTRE', selectedSemestre],
-      ['TOTAL CARGA HORARIA', `${formatHourValue(grandTotal)} H`],
-    ];
+    doc.setFont('times', 'normal');
+    doc.setFontSize(12);
+    doc.text('DECLARACION JURADA DE LOS DOCENTES QUE PRESTAN SERVICIOS EN SEDES', PDF.width / 2, 43.29, { align: 'center' });
+    doc.text('DESCENTRALIZADAS', PDF.width / 2, 65.96, { align: 'center' });
 
-    autoTable(doc, {
-      startY: 42,
-      body: docenteData,
-      theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 2 },
-      columnStyles: {
-        0: { fontStyle: 'bold', fillColor: [245, 245, 245], cellWidth: 55 },
-        1: { cellWidth: 125 },
-      },
-    });
+    let y = 97.96;
+    y = drawParagraph(doc, `Yo, ${d.nombre.toUpperCase()} identificado con DNI. Nro ${d.dni || '________'} con Código IBM Nro ${docenteAny.codigoIBM || '____'} del Departamento Académico ${departamento} Facultad de ${facultad}; para el ${periodo}, en el marco del reglamento de funcionamiento de Sedes Descentralizadas (RCU Nro 072 CU-COG-2005/UNT) y la Directiva Nro 01-2007-VAC/UNT sobre Racionalización Académica del Personal Docentes que labora en las Sedes descentralizadas (R.C.U. Nro 576-2007/UNT) DECLARO BAJO JURAMENTO Y EN HONOR A LA VERDAD QUE:`, PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 14.17 });
+    y = drawParagraph(doc, 'EN MI PRESTACION DE SERVICIOS EN SEDES DESCENTRALIZADAS NO ESTOY INCURSO EN INCOMPATIBILIDAD HORARIA NI CONTRAVENGO LA SIGUIENTE NORMATIVIDAD INSTITUCIONAL:', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 14.17 });
+    y = drawParagraph(doc, 'Los docentes ordinarios a Dedicación Exclusiva y Tiempo Completo solo pueden tener carga horaria máxima de diez (10) horas semanales (num. 1 de la Directiva).', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 14.17 });
+    y = drawParagraph(doc, 'Los docentes que ejercen cargos académicos y administrativos de: Jefe de Departamento Académico, Director de Escuela Académico Profesional, Director de Sección de Postgrado, Profesor Secretario de Facultad. Jefe de Oficina General, o cargos Directivos en Centros de Producción o líneas de Rentabilidad pueden asumir carga máxima de 05 horas semanales, siempre que sea en forma excepcional y por no contar con docente de la especialidad habilitada para asumir dicha carga. (num. 2 y 3 de la Directiva RCU Nro 005-2009/UNT y art.23 del Reglamento).', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 14.17 });
+    y = drawParagraph(doc, 'Los docentes que ejercen cargo de Decano o Director de Postgrado y aquellos que prestan servicios en Centros de Producción y línea de Rentabilidad no pueden asumir carga horaria en Sedes Descentralizadas. (num. 3 de la Directiva ya art 23 del Reglamento).', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 14.17 });
+    y = drawParagraph(doc, 'Los docentes beneficiados con becas de estudio de maestria o doctorado o Segunda especialidad solo pueden tener carga horaria máxima de tres (03) horas semanales. (num. 4 de la Directiva).', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 14.17 });
+    y = drawParagraph(doc, 'El desarrollo de la carga en sede descentralizada no puede inferir con la carga lectiva y no lectiva asignada en la Sede Central; salvo el caso de las Sedes de Cascas, Huamachuco, Tayabamba y Santiago de Chuco en que se debe contar con Licencia por comisión de servicios y carta de compromiso del docente que asumiría la carga horaria en la Sede Central (num. 5 y 7 de la Directiva y art. 23 del Reglamento).', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 14.17 });
+    y = drawParagraph(doc, 'Los docentes que asumen carga horaria en las Sedes de Huamachuco, Cascas, Santiago de Chuco y Tayabamba no pueden asumir labores labores durante el mismo periodo en otra Sede (num. 6 de la Directiva).', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 14.17 });
+    y = drawParagraph(doc, 'En caso de faltar a la verdad así como de incurrir en incompatibilidad horaria contraviniendo los dispositivos pre-citados me avengo a las sanciones que correspondan,', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, gapAfter: 0 });
+    drawParagraph(doc, 'y autorizo al funcionario competente disponga el descuento del pago por mis servicios en Sedes Descentralizadas, conforme al monto que la unidad de remuneraciones liquide como pago indebido por el periodo ilegalmente laborado.', PDF.bodyX, y, PDF.bodyW, { lineHeight: 14.17, style: 'bolditalic', gapAfter: 0 });
 
-    let currentY = ((doc as any).lastAutoTable?.finalY || 42) + 12;
-
-    const bodyText = [
-      `Yo, ${d.nombre.toUpperCase()}, identificado(a) con DNI Nro ${d.dni || '________'}, docente del Departamento Academico ${(d as any).departamento || 'Ingenieria de Sistemas'}, declaro bajo juramento que la informacion consignada para el semestre ${selectedSemestre} corresponde a mi carga horaria registrada en el sistema.`,
-      'Asimismo, declaro que no tengo asignacion de horas lectivas en sedes descentralizadas distintas a las registradas oficialmente por la Universidad Nacional de Trujillo para el periodo academico indicado.',
-      'En caso de faltar a la verdad, me someto a las acciones administrativas que correspondan de acuerdo con la normativa institucional vigente.'
-    ];
+    doc.setFont('times', 'normal');
+    doc.setFontSize(12);
+    doc.text(getPdfCurrentDate(), 405.27, 641.4);
+    doc.text('__________________________________', 289.23, 709.43);
+    doc.text('FIRMA DEL DECLARANTE', 317.56, 726.43);
+    doc.text(`DNI: ${d.dni || ''}`, 346.7, 743.44);
 
     doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    bodyText.forEach(text => {
-      const splitText = doc.splitTextToSize(text, 180);
-      doc.text(splitText, 15, currentY);
-      currentY += (splitText.length * 5) + 8;
+    const note = 'Nota: Los docentes deben suscribir de forma obligatoria el presente formato para prestar servicios en cada Sede Descentralizada, al reverso de la Declaración de la Carga Horaria';
+    doc.text(doc.splitTextToSize(note, PDF.bodyW) as string[], PDF.bodyX, 800.95);
+
+    return {
+      doc,
+      filename: `Formato_3_${d.nombre.replace(/\s+/g, '_')}.pdf`,
+    };
+  };
+
+  const getGeneratedFormat = (formatNumber: 1 | 2 | 3) => {
+    if (formatNumber === 1) return generateFormat1();
+    if (formatNumber === 2) return generateFormat2();
+    return generateFormat3();
+  };
+
+  const handlePreviewFormat = (formatNumber: 1 | 2 | 3) => {
+    const generated = getGeneratedFormat(formatNumber);
+    if (!generated) return;
+
+    const url = URL.createObjectURL(generated.doc.output('blob'));
+    setPreviewUrl((currentUrl) => {
+      if (currentUrl) {
+        URL.revokeObjectURL(currentUrl);
+      }
+      return url;
     });
+    setPreviewOpen(true);
+  };
 
-    doc.text(`Trujillo, ${format(new Date(), "dd 'de' MMMM 'del' yyyy", { locale: es })}`, 15, currentY + 10);
+  const handleDownloadFormat = (formatNumber: 1 | 2 | 3) => {
+    const generated = getGeneratedFormat(formatNumber);
+    if (!generated) return;
 
-    doc.line(70, currentY + 45, 140, currentY + 45);
-    doc.text('FIRMA DEL DECLARANTE', 105, currentY + 50, { align: 'center' });
-    doc.text(`DNI: ${d.dni || ''}`, 105, currentY + 55, { align: 'center' });
-
-    doc.save(`Formato_3_${d.nombre.replace(/\s+/g, '_')}.pdf`);
+    generated.doc.save(generated.filename);
   };
 
   const getDocenteDisplayCategory = (categoria: string) => {
@@ -489,7 +944,7 @@ const CargaHorariaPage: React.FC = () => {
                 onChange={(e) => setSelectedSemestre(e.target.value)}
                 className="bg-transparent border-none text-sm font-bold text-purple-600 focus:ring-0 cursor-pointer p-0"
               >
-                {SEMESTRES.map(s => <option key={s} value={s}>{s}</option>)}
+                {semestreOptions.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </div>
@@ -609,51 +1064,93 @@ const CargaHorariaPage: React.FC = () => {
                     Documentos Oficiales
                 </h3>
                 <div className="space-y-3">
-                    <button 
-                        onClick={generateFormat1}
-                        className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 hover:bg-purple-600 hover:text-white transition-all group border border-transparent hover:border-purple-400"
+                    <div
+                        className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-transparent hover:border-purple-400 transition-all"
                     >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 mb-3">
                             <div className="w-10 h-10 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm group-hover:bg-white/20">
-                                <FileText size={18} className="text-purple-600 group-hover:text-white" />
+                                <FileText size={18} className="text-purple-600" />
                             </div>
                             <div className="text-left">
                                 <p className="text-sm font-bold">FORMATO N° 1</p>
                                 <p className="text-[10px] opacity-60 font-medium">Declaración de Carga Horaria</p>
                             </div>
                         </div>
-                        <Download size={16} className="opacity-40 group-hover:opacity-100" />
-                    </button>
-                    <button 
-                        onClick={generateFormat2}
-                        className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 hover:bg-blue-600 hover:text-white transition-all group border border-transparent hover:border-blue-400"
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={() => handlePreviewFormat(1)}
+                                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white dark:bg-gray-900 text-purple-600 dark:text-purple-300 text-xs font-bold border border-purple-100 dark:border-purple-500/20 hover:bg-purple-600 hover:text-white transition-all"
+                            >
+                                <Eye size={15} />
+                                Vista previa
+                            </button>
+                            <button
+                                onClick={() => handleDownloadFormat(1)}
+                                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all"
+                            >
+                                <Download size={15} />
+                                Descargar
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-transparent hover:border-blue-400 transition-all"
                     >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 mb-3">
                             <div className="w-10 h-10 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm group-hover:bg-white/20">
-                                <CheckCircle2 size={18} className="text-blue-600 group-hover:text-white" />
+                                <CheckCircle2 size={18} className="text-blue-600" />
                             </div>
                             <div className="text-left">
                                 <p className="text-sm font-bold">FORMATO N° 2</p>
                                 <p className="text-[10px] opacity-60 font-medium">Declaración Jurada</p>
                             </div>
                         </div>
-                        <Download size={16} className="opacity-40 group-hover:opacity-100" />
-                    </button>
-                    <button
-                        onClick={generateFormat3}
-                        className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 hover:bg-emerald-600 hover:text-white transition-all group border border-transparent hover:border-emerald-400"
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={() => handlePreviewFormat(2)}
+                                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-300 text-xs font-bold border border-blue-100 dark:border-blue-500/20 hover:bg-blue-600 hover:text-white transition-all"
+                            >
+                                <Eye size={15} />
+                                Vista previa
+                            </button>
+                            <button
+                                onClick={() => handleDownloadFormat(2)}
+                                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all"
+                            >
+                                <Download size={15} />
+                                Descargar
+                            </button>
+                        </div>
+                    </div>
+                    <div
+                        className="w-full p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/50 border border-transparent hover:border-emerald-400 transition-all"
                     >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 mb-3">
                             <div className="w-10 h-10 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm group-hover:bg-white/20">
-                                <MapPin size={18} className="text-emerald-600 group-hover:text-white" />
+                                <MapPin size={18} className="text-emerald-600" />
                             </div>
                             <div className="text-left">
                                 <p className="text-sm font-bold">FORMATO N° 3</p>
                                 <p className="text-[10px] opacity-60 font-medium">Sedes Descentralizadas</p>
                             </div>
                         </div>
-                        <Download size={16} className="opacity-40 group-hover:opacity-100" />
-                    </button>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={() => handlePreviewFormat(3)}
+                                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-300 text-xs font-bold border border-emerald-100 dark:border-emerald-500/20 hover:bg-emerald-600 hover:text-white transition-all"
+                            >
+                                <Eye size={15} />
+                                Vista previa
+                            </button>
+                            <button
+                                onClick={() => handleDownloadFormat(3)}
+                                className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all"
+                            >
+                                <Download size={15} />
+                                Descargar
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
           </div>
@@ -671,8 +1168,8 @@ const CargaHorariaPage: React.FC = () => {
                     </div>
                     <div className="text-right">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total de Horas</p>
-                        <p className={`text-2xl font-black ${grandTotal === 40 ? 'text-emerald-500' : 'text-purple-600'}`}>
-                            {grandTotal} <span className="text-sm font-bold opacity-50">/ 40H</span>
+                        <p className={`text-2xl font-black ${totalStatusClass}`}>
+                            {formatHourValue(grandTotal)} <span className="text-sm font-bold opacity-50">/ {targetHours ?? '--'}H</span>
                         </p>
                     </div>
                 </div>
@@ -788,7 +1285,68 @@ const CargaHorariaPage: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Add more rubros here as needed based on the 10 rubros list... */}
+                        {/* Gobierno rubro */}
+                        <div className="space-y-4 p-5 rounded-3xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">
+                            <div className="flex justify-between items-start">
+                                <div className="flex gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm">
+                                        <span className="text-purple-600 font-bold">06</span>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-gray-800 dark:text-white">Actividades de Gobierno</h4>
+                                        <p className="text-[10px] text-gray-400 font-medium">Si desempeña cargo, indícalo.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-xl shadow-sm">
+                                    <input 
+                                        type="number" 
+                                        min={0}
+                                        value={formData.gobierno}
+                                        onChange={(e) => handleInputChange('gobierno', parseInt(e.target.value) || 0)}
+                                        className="w-10 bg-transparent border-none p-0 text-sm font-bold text-purple-600 focus:ring-0 text-center"
+                                    />
+                                    <span className="text-[10px] font-bold text-gray-300">HRS</span>
+                                </div>
+                            </div>
+                            <textarea
+                                placeholder="Cargo, resolución o actividad de gobierno..."
+                                value={formData.detallesGobierno}
+                                onChange={(e) => handleInputChange('detallesGobierno', e.target.value)}
+                                className="w-full text-xs bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-purple-500/20 p-3 min-h-[60px]"
+                            />
+                        </div>
+
+                        {/* Administración rubro */}
+                        <div className="space-y-4 p-5 rounded-3xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">
+                            <div className="flex justify-between items-start">
+                                <div className="flex gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm">
+                                        <span className="text-purple-600 font-bold">07</span>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-gray-800 dark:text-white">Actividades de Administración</h4>
+                                        <p className="text-[10px] text-gray-400 font-medium">Si desempeña cargo, indícalo.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-xl shadow-sm">
+                                    <input 
+                                        type="number" 
+                                        min={0}
+                                        value={formData.administracion}
+                                        onChange={(e) => handleInputChange('administracion', parseInt(e.target.value) || 0)}
+                                        className="w-10 bg-transparent border-none p-0 text-sm font-bold text-purple-600 focus:ring-0 text-center"
+                                    />
+                                    <span className="text-[10px] font-bold text-gray-300">HRS</span>
+                                </div>
+                            </div>
+                            <textarea
+                                placeholder="Cargo administrativo, resolución o periodo..."
+                                value={formData.detallesAdministracion}
+                                onChange={(e) => handleInputChange('detallesAdministracion', e.target.value)}
+                                className="w-full text-xs bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-purple-500/20 p-3 min-h-[60px]"
+                            />
+                        </div>
+
                         {/* Asesoría de Tesis */}
                         <div className="space-y-4 p-5 rounded-3xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">
                             <div className="flex justify-between items-start">
@@ -848,13 +1406,69 @@ const CargaHorariaPage: React.FC = () => {
                                 className="w-full text-xs bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-purple-500/20 p-3 min-h-[60px]"
                             />
                         </div>
+
+                        {/* Comités y comisiones rubro */}
+                        <div className="space-y-4 p-5 rounded-3xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50 md:col-span-2">
+                            <div className="flex justify-between items-start">
+                                <div className="flex gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm">
+                                        <span className="text-purple-600 font-bold">10</span>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-gray-800 dark:text-white">Comités Técnicos y Comisiones</h4>
+                                        <p className="text-[10px] text-gray-400 font-medium">Consigna resolución autoritativa y vigencia.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-xl shadow-sm">
+                                    <input 
+                                        type="number" 
+                                        min={0}
+                                        value={formData.comisiones}
+                                        onChange={(e) => handleInputChange('comisiones', parseInt(e.target.value) || 0)}
+                                        className="w-10 bg-transparent border-none p-0 text-sm font-bold text-purple-600 focus:ring-0 text-center"
+                                    />
+                                    <span className="text-[10px] font-bold text-gray-300">HRS</span>
+                                </div>
+                            </div>
+                            <textarea
+                                placeholder="N° de resolución, comité o comisión, periodo de vigencia..."
+                                value={formData.detallesComisiones}
+                                onChange={(e) => handleInputChange('detallesComisiones', e.target.value)}
+                                className="w-full text-xs bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-purple-500/20 p-3 min-h-[70px]"
+                            />
+                        </div>
                     </div>
 
+                    {(validationState.errors.length > 0 || validationState.warnings.length > 0) && (
+                        <div className="space-y-2">
+                            {validationState.errors.map((message) => (
+                                <div key={message} className="flex items-start gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 rounded-2xl px-4 py-3">
+                                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                                    <span className="text-xs font-bold leading-relaxed">{message}</span>
+                                </div>
+                            ))}
+                            {validationState.warnings.map((message) => (
+                                <div key={message} className="flex items-start gap-2 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 rounded-2xl px-4 py-3">
+                                    <Info size={16} className="mt-0.5 shrink-0" />
+                                    <span className="text-xs font-bold leading-relaxed">{message}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Bottom Action Bar */}
-                    <div className="pt-6 flex justify-between items-center border-t border-gray-100 dark:border-gray-800">
-                        <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                            <AlertCircle size={16} />
-                            <span className="text-xs font-bold uppercase tracking-wider">Asegúrate de que el total sume 40 horas</span>
+                    <div className="pt-6 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 border-t border-gray-100 dark:border-gray-800">
+                        <div className={`flex items-center gap-2 ${validationState.errors.length > 0 ? 'text-red-600 dark:text-red-400' : remainingHours === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                            {validationState.errors.length > 0 ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+                            <span className="text-xs font-bold uppercase tracking-wider">
+                                {targetHours === null
+                                  ? `Total registrado: ${formatHourValue(grandTotal)} horas`
+                                  : remainingHours === 0
+                                    ? `Carga completa: ${formatHourValue(grandTotal)} de ${targetHours} horas`
+                                    : remainingHours > 0
+                                      ? `Faltan ${formatHourValue(remainingHours)} horas para completar ${targetHours}`
+                                      : `Exceso de ${formatHourValue(Math.abs(remainingHours))} horas sobre ${targetHours}`}
+                            </span>
                         </div>
                         <button 
                             onClick={handleSave}
@@ -869,6 +1483,61 @@ const CargaHorariaPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Real-time validation alert */}
+      <AnimatePresence>
+        {validationState.errors.length > 0 && liveValidationVisible && (
+          <div className="fixed top-24 right-4 md:right-8 z-[220] w-[calc(100vw-2rem)] max-w-lg pointer-events-none">
+            <motion.div
+              key={validationErrorKey}
+              initial={{ opacity: 0, y: -18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -18, scale: 0.96 }}
+              className="pointer-events-auto relative overflow-hidden rounded-[2rem] border border-red-200 dark:border-red-500/20 bg-white/95 dark:bg-[#0f0f1a]/95 backdrop-blur-xl shadow-2xl"
+            >
+              <div className="p-5 border-b border-red-100 dark:border-red-500/10 bg-red-50 dark:bg-red-500/10 flex items-start gap-4">
+                <div className="w-11 h-11 rounded-2xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-red-600/20">
+                  <AlertCircle size={22} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-black text-red-900 dark:text-red-100">Validación en tiempo real</h3>
+                  <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                    Hay {validationState.errors.length} {validationState.errors.length === 1 ? 'punto pendiente' : 'puntos pendientes'} en tu carga no lectiva.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setLiveValidationVisible(false);
+                    setDismissedValidationKey(validationErrorKey);
+                  }}
+                  className="p-2 rounded-xl text-red-500 hover:bg-red-100 dark:hover:bg-red-500/10 transition-colors"
+                  title="Cerrar notificación"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-3 max-h-[45vh] overflow-y-auto custom-scrollbar">
+                {validationState.errors.map((message, index) => (
+                  <div key={`${message}-${index}`} className="flex items-start gap-3 rounded-2xl border border-red-100 dark:border-red-500/10 bg-red-50/70 dark:bg-red-500/[0.06] p-4">
+                    <span className="w-6 h-6 rounded-lg bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-300 text-xs font-black flex items-center justify-center shrink-0">
+                      {index + 1}
+                    </span>
+                    <p className="text-sm font-bold text-gray-800 dark:text-gray-100 leading-relaxed">{message}</p>
+                  </div>
+                ))}
+              </div>
+              <motion.div
+                key={`progress-${validationErrorKey}`}
+                initial={{ width: '100%' }}
+                animate={{ width: '0%' }}
+                transition={{ duration: 6.5, ease: 'linear' }}
+                className="absolute bottom-0 left-0 h-1 bg-red-500/70"
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Profile Modal (Image 5 style) */}
       <AnimatePresence>
@@ -985,6 +1654,18 @@ const CargaHorariaPage: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      <ModalPDF
+        isOpen={previewOpen}
+        onClose={() => {
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+          }
+          setPreviewOpen(false);
+          setPreviewUrl('');
+        }}
+        pdfUrl={previewUrl}
+      />
 
       {/* Notifications Portal */}
       <AnimatePresence>

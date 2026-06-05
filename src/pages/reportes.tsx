@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import DashboardLayout from '../layouts/DashboardLayout';
-import { FileText, PieChart, Download, Calendar, CheckCircle2, Clock, Eye, Sparkles, Award } from 'lucide-react';
+import { FileText, PieChart, Download, Calendar, CheckCircle2, Clock, Eye, Sparkles, Award, CalendarRange } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { trpc } from '../utils/trpc';
 import ModalPDF from '../components/ModalPDF';
 import { jsPDF } from 'jspdf';
+import { getSemestreDateLabels, getSemestresDinamicos } from '../utils/semestre';
 
 interface Reporte {
   id: number;
@@ -29,6 +30,30 @@ const ReportesPage: React.FC = () => {
   // Fetch all schedules and teachers to use in the real PDF generation
   const { data: horarios } = trpc.horarios.getAll.useQuery();
   const { data: docentes } = trpc.docentes.getAll.useQuery();
+  const semestresQuery = trpc.semestres.getAll.useQuery();
+  const [selectedSemestre, setSelectedSemestre] = useState('2026-I');
+  const initializedSemestre = React.useRef(false);
+
+  React.useEffect(() => {
+    if (initializedSemestre.current || !semestresQuery.data) return;
+    const active = semestresQuery.data?.find((semestre: any) => semestre.activo);
+    if (active) {
+      setSelectedSemestre(active.codigo);
+    }
+    initializedSemestre.current = true;
+  }, [semestresQuery.data]);
+
+  const semestreOptions = React.useMemo(() => {
+    const configured = semestresQuery.data?.map((semestre: any) => semestre.codigo) || [];
+    return Array.from(new Set([...configured, ...getSemestresDinamicos()]));
+  }, [semestresQuery.data]);
+
+  const semestreSeleccionado = semestresQuery.data?.find((semestre: any) => semestre.codigo === selectedSemestre);
+  const semestreDateLabels = getSemestreDateLabels(semestreSeleccionado as any);
+  const horariosFiltrados = React.useMemo(
+    () => (horarios || []).filter((h: any) => !selectedSemestre || h.semestre === selectedSemestre),
+    [horarios, selectedSemestre]
+  );
 
   const showToast = (title: string, message: string) => {
     setToast({ title, message });
@@ -97,7 +122,7 @@ const ReportesPage: React.FC = () => {
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.2);
-      doc.roundedRect(14, 39, 182, 20, 2, 2, 'FD');
+      doc.roundedRect(14, 39, 182, 28, 2, 2, 'FD');
       
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
@@ -109,6 +134,9 @@ const ReportesPage: React.FC = () => {
       doc.setFontSize(8);
       doc.setTextColor(110, 110, 110);
       doc.text(`CÓDIGO INTERNO: UNT-SYS-${report.id.toString().slice(-6)}`, 110, 46);
+      doc.text(`SEMESTRE: ${selectedSemestre || 'TODOS'}`, 18, 57);
+      doc.text(`INICIO: ${semestreDateLabels.inicio}`, 110, 57);
+      doc.text(`FINAL: ${semestreDateLabels.fin}`, 150, 57);
       
       // Status Badge with green fill
       doc.setFillColor(220, 252, 231); // Soft Green background
@@ -118,7 +146,7 @@ const ReportesPage: React.FC = () => {
       doc.setTextColor(21, 128, 61); // Dark Green text
       doc.text('OFICIAL UNT', 113, 52.7);
       
-      let y = 70;
+      let y = 76;
       
       if (report.tipo === 'Operacional') {
         doc.setFont('helvetica', 'bold');
@@ -147,12 +175,12 @@ const ReportesPage: React.FC = () => {
         
         y += 6;
         
-        if (horarios && horarios.length > 0) {
+        if (horariosFiltrados.length > 0) {
           let rowCount = 0;
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(60, 60, 60);
           
-          horarios.forEach((h: any) => {
+          horariosFiltrados.forEach((h: any) => {
             const timeStart = new Date(h.horaInicio).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'UTC' });
             const timeEnd = new Date(h.horaFin).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'UTC' });
             
@@ -255,10 +283,10 @@ const ReportesPage: React.FC = () => {
         y += 10;
         
         // Metrics Statistics Cards (2x2 Dashboard grid layout)
-        const totalHorarios = horarios?.length || 0;
-        const uniqueDocentes = new Set(horarios?.map((h: any) => h.docenteId)).size;
-        const uniqueAulas = new Set(horarios?.map((h: any) => h.aulaId)).size;
-        const uniqueCursos = new Set(horarios?.map((h: any) => h.cursoId)).size;
+        const totalHorarios = horariosFiltrados.length;
+        const uniqueDocentes = new Set(horariosFiltrados.map((h: any) => h.docenteId)).size;
+        const uniqueAulas = new Set(horariosFiltrados.map((h: any) => h.aulaId)).size;
+        const uniqueCursos = new Set(horariosFiltrados.map((h: any) => h.cursoId)).size;
         
         const drawStatCard = (x: number, yPos: number, title: string, value: string, color: [number, number, number]) => {
           // Soft card border and background
@@ -302,7 +330,7 @@ const ReportesPage: React.FC = () => {
         const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
         const counts = dias.map(dia => ({
           dia,
-          count: horarios?.filter((h: any) => h.dia === dia).length || 0
+          count: horariosFiltrados.filter((h: any) => h.dia === dia).length || 0
         }));
 
         const maxCount = Math.max(...counts.map(c => c.count), 1);
@@ -499,7 +527,7 @@ const ReportesPage: React.FC = () => {
     const now = new Date();
     const newReport: Reporte = {
       id: Date.now(),
-      nombre: `Reporte_${tipo === 'antiguedad' ? 'Antiguedad' : tipo.charAt(0).toUpperCase() + tipo.slice(1)}_${now.getFullYear()}_${(now.getMonth() + 1).toString().padStart(2, '0')}_${now.getDate().toString().padStart(2, '0')}_${now.getTime().toString().slice(-4)}.pdf`,
+      nombre: `Reporte_${tipo === 'antiguedad' ? 'Antiguedad' : tipo.charAt(0).toUpperCase() + tipo.slice(1)}_${selectedSemestre || 'Todos'}_${now.getFullYear()}_${(now.getMonth() + 1).toString().padStart(2, '0')}_${now.getDate().toString().padStart(2, '0')}_${now.getTime().toString().slice(-4)}.pdf`,
       tipo: tipo === 'operacional' ? 'Operacional' : tipo === 'gestion' ? 'Gestión' : 'Antigüedad',
       fecha: now.toISOString().split('T')[0],
       hora: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -545,6 +573,38 @@ const ReportesPage: React.FC = () => {
               Reportes y Documentación
             </h2>
             <p className="text-muted-foreground dark:text-gray-300 mt-1">Exporta la programación académica en formatos profesionales.</p>
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#0f0f1a] border border-gray-200 dark:border-white/10 rounded-3xl p-5 md:p-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-purple-100 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+              <CalendarRange size={24} />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Periodo del reporte</p>
+              <h3 className="text-xl font-black text-gray-900 dark:text-white mt-1">{selectedSemestre}</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Inicio: <span className="font-bold text-gray-700 dark:text-gray-200">{semestreDateLabels.inicio}</span>
+                <span className="mx-2 text-gray-300">|</span>
+                Final: <span className="font-bold text-gray-700 dark:text-gray-200">{semestreDateLabels.fin}</span>
+                <span className="mx-2 text-gray-300">|</span>
+                {horariosFiltrados.length} horarios
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Semestre</label>
+            <select
+              value={selectedSemestre}
+              onChange={(event) => setSelectedSemestre(event.target.value)}
+              className="bg-gray-50 dark:bg-black/20 border-gray-200 dark:border-white/10 rounded-xl text-sm font-bold text-purple-600 focus:ring-purple-500/20"
+            >
+              {semestreOptions.map((semestre) => (
+                <option key={semestre} value={semestre}>{semestre}</option>
+              ))}
+            </select>
           </div>
         </div>
 

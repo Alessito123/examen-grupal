@@ -117,12 +117,29 @@ model CargaNoLectiva {
   otros                   Int     @default(0)
   detallesConsejeria      String?
   detallesInvestigacion   String?
+  detallesGobierno        String?
+  detallesAdministracion  String?
   detallesAsesoria        String?
   detallesResponsabilidad String?
   detallesComisiones      String?
   docente                 Docente @relation(fields: [docenteId], references: [id])
 
   @@unique([docenteId, semestre])
+}
+
+model SemestreAcademico {
+  id          Int      @id @default(autoincrement())
+  codigo      String   @unique
+  anio        Int
+  ciclo       String
+  fechaInicio DateTime @db.Date
+  fechaFin    DateTime @db.Date
+  activo      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([activo])
+  @@index([anio, ciclo])
 }
 
 enum Categoria {

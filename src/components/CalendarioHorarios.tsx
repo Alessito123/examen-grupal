@@ -4,6 +4,8 @@ import { Clock, MapPin, User, BookOpen, FileSpreadsheet, Download, FileText, Eye
 import { jsPDF } from 'jspdf';
 import ModalPDF from './ModalPDF';
 import { SCHEDULE_DAYS, SCHEDULE_END_HOUR, SCHEDULE_START_HOUR, SCHEDULE_TIME_MARKERS } from '../utils/scheduleConfig';
+import { trpc } from '../utils/trpc';
+import { getSemestreDateLabels } from '../utils/semestre';
 
 const loadImage = (src: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
@@ -84,6 +86,11 @@ const minutesFromDate = (date: string | Date) => {
 const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selectedCiclo, selectedSemestre }) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const semestreQuery = trpc.semestres.getByCodigo.useQuery(
+    { codigo: selectedSemestre || '2026-I' },
+    { enabled: !!selectedSemestre && /^\d{4}-(I|II)$/.test(selectedSemestre) }
+  );
+  const semestreDateLabels = getSemestreDateLabels(semestreQuery.data as any);
 
   const summaryData = React.useMemo(() => {
     const map = new Map<string, {
@@ -308,6 +315,13 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
             <td style="font-weight: bold; color: #475569; padding-right: 10px;">SEMESTRE / AÃ‘O:</td>
             <td style="color: #1e293b;">${selectedSemestre || 'TODOS'}</td>
           </tr>
+          <tr>
+            <td style="font-weight: bold; color: #475569; padding-right: 10px;">INICIO:</td>
+            <td style="color: #1e293b;">${semestreDateLabels.inicio}</td>
+            <td></td>
+            <td style="font-weight: bold; color: #475569; padding-right: 10px;">FINAL:</td>
+            <td style="color: #1e293b;">${semestreDateLabels.fin}</td>
+          </tr>
         </table>
 
         <!-- Summary Table (Tabla Resumen de DistribuciÃ³n de Horas) -->
@@ -380,7 +394,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Horarios_Sistemas_UNT_${new Date().toISOString().slice(0, 10)}.xls`;
+    link.download = `Horarios_Sistemas_UNT_${selectedSemestre || 'Todos'}_${new Date().toISOString().slice(0, 10)}.xls`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -477,6 +491,17 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.text("SEMESTRE:", 53, metaY);
       doc.setTextColor(40, 40, 40);
       doc.text(semText, 70, metaY);
+
+      metaY += 4.5;
+      doc.setTextColor(120, 120, 120);
+      doc.text("INICIO:", 12, metaY);
+      doc.setTextColor(40, 40, 40);
+      doc.text(semestreDateLabels.inicio, 26, metaY);
+
+      doc.setTextColor(120, 120, 120);
+      doc.text("FINAL:", 53, metaY);
+      doc.setTextColor(40, 40, 40);
+      doc.text(semestreDateLabels.fin, 70, metaY);
 
       // Now draw the summary table on the right side!
       // Summary table coordinates: startX = 108, startY = 10, width = 177
@@ -784,7 +809,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
 
       // 5. Save or return the generated PDF
       if (shouldDownload) {
-        doc.save(`Horarios_Calendario_UNT_${new Date().toISOString().slice(0, 10)}.pdf`);
+        doc.save(`Horarios_Calendario_UNT_${selectedSemestre || 'Todos'}_${new Date().toISOString().slice(0, 10)}.pdf`);
       } else {
         const blob = doc.output('blob');
         return URL.createObjectURL(blob);

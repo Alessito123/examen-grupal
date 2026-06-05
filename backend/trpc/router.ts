@@ -7,6 +7,7 @@ import { estadisticasRouter } from './estadisticasRouter';
 import { reportesRouter } from './reportesRouter';
 import { notificacionesRouter } from './notificacionesRouter';
 import { cargaNoLectivaRouter } from './cargaNoLectivaRouter';
+import { semestresRouter } from './semestresRouter';
 
 /**
  * Root Router del Servidor tRPC
@@ -20,6 +21,7 @@ export const appRouter = router({
   reportes: reportesRouter,
   notificaciones: notificacionesRouter,
   cargaNoLectiva: cargaNoLectivaRouter,
+  semestres: semestresRouter,
 });
 
 // Exportar solo el tipo para el frontend

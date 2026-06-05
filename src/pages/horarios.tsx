@@ -39,7 +39,9 @@ export const SEMESTRES = getSemestresDinamicos();
 const HorariosPage: React.FC = () => {
   const { user } = useAuth();
   const horariosQuery = trpc.horarios.getAll.useQuery();
+  const semestresQuery = trpc.semestres.getAll.useQuery();
   const [semestre, setSemestre] = useState<string>('2026-I');
+  const initializedSemestre = React.useRef(false);
   
   const docentesQuery = trpc.docentes.getDocentesConDisponibilidad.useQuery(
     { semestre: semestre || '2026-I' },
@@ -68,6 +70,15 @@ const HorariosPage: React.FC = () => {
       setScheduleScope('mio');
     }
   }, [user]);
+
+  React.useEffect(() => {
+    if (initializedSemestre.current || !semestresQuery.data) return;
+    const active = semestresQuery.data.find((item: any) => item.activo);
+    if (active) {
+      setSemestre(active.codigo);
+    }
+    initializedSemestre.current = true;
+  }, [semestresQuery.data]);
 
   const isAdmin = user?.rol === 'ADMIN';
 
@@ -124,7 +135,7 @@ const HorariosPage: React.FC = () => {
       }
       const hCiclo = h.curso?.ciclo ?? 1;
       const hCicloRom = getCicloRomano(hCiclo);
-      const hSemestre = getSemestreByCiclo(hCiclo);
+      const hSemestre = h.semestre || getSemestreByCiclo(hCiclo);
 
       const matchDocente = !docenteId || h.docenteId === Number(docenteId);
       const matchAula = !aulaId || h.aulaId === Number(aulaId);
@@ -135,6 +146,11 @@ const HorariosPage: React.FC = () => {
       return matchDocente && matchAula && matchDia && matchSemestre && matchCiclo;
     });
   }, [horariosQuery.data, docenteId, aulaId, dia, semestre, ciclo, scheduleScope, user]);
+
+  const semestreOptions = useMemo(() => {
+    const configured = semestresQuery.data?.map((item: any) => item.codigo) || [];
+    return Array.from(new Set([...configured, ...SEMESTRES]));
+  }, [semestresQuery.data]);
 
   const resetFilters = () => {
     setDocenteId('');
@@ -286,7 +302,7 @@ const HorariosPage: React.FC = () => {
                     className="w-full bg-white dark:bg-black/20 border-gray-200 dark:border-white/10"
                   >
                     <option value="">Todos los semestres</option>
-                    {SEMESTRES.map((s) => (
+                    {semestreOptions.map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
