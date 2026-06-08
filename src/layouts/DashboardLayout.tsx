@@ -27,6 +27,7 @@ import { useSearch } from '../contexts/SearchContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { trpc } from '../utils/trpc';
 import CustomCursor from '../components/CustomCursor';
+import ChatbotWidget from '../components/ChatbotWidget';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -475,6 +476,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           </div>
         )}
       </AnimatePresence>
+      <ChatbotWidget user={user} />
     </div>
   );
 };

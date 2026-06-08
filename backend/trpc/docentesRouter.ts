@@ -173,23 +173,25 @@ export const docentesRouter = router({
           const date = new Date(dateStr);
           return isNaN(date.getTime()) ? null : date;
         };
+        const hasField = (field: keyof typeof input) => Object.prototype.hasOwnProperty.call(input, field);
         const nextCondicion = data.condicion || existingDocente.condicion || 'NOMBRADO';
 
         const updateData: any = {
           nombre: data.nombre,
           categoria: data.categoria,
-          condicion: nextCondicion,
-          dedicacion: data.dedicacion,
-          dni: (typeof data.dni === 'string' && data.dni.trim() !== "") ? data.dni : null,
-          email: (typeof data.email === 'string' && data.email.trim() !== "") ? data.email : null,
-          codigoIBM: (typeof data.codigoIBM === 'string' && data.codigoIBM.trim() !== "") ? data.codigoIBM : null,
-          facultad: data.facultad || undefined,
-          departamento: data.departamento || undefined,
-          escuela: data.escuela || undefined,
-          rol: data.rol,
-          fechaNombramiento: nextCondicion === 'NOMBRADO' ? parseDate(fechaNombramiento) : null,
-          fechaContrato: nextCondicion === 'CONTRATADO' ? parseDate(fechaContrato) : null,
         };
+
+        if (data.condicion !== undefined) updateData.condicion = nextCondicion;
+        if (data.dedicacion !== undefined) updateData.dedicacion = data.dedicacion;
+        if (hasField('dni')) updateData.dni = (typeof data.dni === 'string' && data.dni.trim() !== "") ? data.dni : null;
+        if (hasField('email')) updateData.email = (typeof data.email === 'string' && data.email.trim() !== "") ? data.email : null;
+        if (hasField('codigoIBM')) updateData.codigoIBM = (typeof data.codigoIBM === 'string' && data.codigoIBM.trim() !== "") ? data.codigoIBM : null;
+        if (data.facultad !== undefined) updateData.facultad = data.facultad;
+        if (data.departamento !== undefined) updateData.departamento = data.departamento;
+        if (data.escuela !== undefined) updateData.escuela = data.escuela;
+        if (data.rol !== undefined) updateData.rol = data.rol;
+        if (hasField('fechaNombramiento')) updateData.fechaNombramiento = nextCondicion === 'NOMBRADO' ? parseDate(fechaNombramiento) : null;
+        if (hasField('fechaContrato')) updateData.fechaContrato = nextCondicion === 'CONTRATADO' ? parseDate(fechaContrato) : null;
         
         if (cursos && Array.isArray(cursos)) {
            updateData.cursos = {
