@@ -149,6 +149,16 @@ type TeachingPdfRow = {
   total: number;
 };
 
+type PdfFormatNumber = 1 | 2 | 3;
+type GeneratedPdf = {
+  doc: jsPDF;
+  filename: string;
+};
+type CachedPdf = {
+  url: string;
+  filename: string;
+};
+
 const makePdfDoc = () => {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   doc.setLineWidth(0.57);
@@ -367,20 +377,26 @@ const CargaHorariaPage: React.FC = () => {
   const [dismissedValidationKey, setDismissedValidationKey] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [pdfCache, setPdfCache] = useState<Partial<Record<PdfFormatNumber, CachedPdf>>>({});
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const pdfCacheRef = React.useRef<Partial<Record<PdfFormatNumber, CachedPdf>>>({});
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
+    pdfCacheRef.current = pdfCache;
+  }, [pdfCache]);
+
+  useEffect(() => {
     return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      Object.values(pdfCacheRef.current).forEach((item) => {
+        if (item?.url) URL.revokeObjectURL(item.url);
+      });
     };
-  }, [previewUrl]);
+  }, []);
 
   // Queries
   const docenteQuery = trpc.docentes.getById.useQuery({ id: user?.id || 0 }, { enabled: !!user?.id });
@@ -388,7 +404,14 @@ const CargaHorariaPage: React.FC = () => {
     { docenteId: user?.id || 0, semestre: selectedSemestre },
     { enabled: !!user?.id }
   );
-  const horariosQuery = trpc.horarios.getAll.useQuery();
+  const horariosQuery = trpc.horarios.getByDocenteAndSemestre.useQuery(
+    { docenteId: user?.id || 0, semestre: selectedSemestre },
+    {
+      enabled: !!user?.id && !!selectedSemestre,
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+    }
+  );
   const semestresQuery = trpc.semestres.getAll.useQuery();
   const semestreQuery = trpc.semestres.getByCodigo.useQuery(
     { codigo: selectedSemestre },
@@ -490,11 +513,12 @@ const CargaHorariaPage: React.FC = () => {
   }, [cargaNoLectivaQuery.data]);
 
   // Calculations
-  const teachingHorarios = (horariosQuery.data || []).filter(
-    (h: any) => h.docenteId === user?.id && h.semestre === selectedSemestre && h.tipoActividad === 'LECTIVA'
+  const teachingHorarios = React.useMemo(
+    () => horariosQuery.data || [],
+    [horariosQuery.data]
   );
 
-  const totalTeachingHours = teachingHorarios.reduce((acc, curr) => {
+  const totalTeachingHours = teachingHorarios.reduce((acc: number, curr: any) => {
     return acc + getHorarioDurationHours(curr);
   }, 0);
 
@@ -593,6 +617,46 @@ const CargaHorariaPage: React.FC = () => {
       ? 'text-emerald-500'
       : 'text-purple-600';
   const validationErrorKey = validationState.errors.join('||');
+  const pdfDataKey = React.useMemo(() => JSON.stringify({
+    docente: docenteQuery.data,
+    formData,
+    selectedSemestre,
+    semestreInicio: semestreDateLabels.inicio,
+    semestreFin: semestreDateLabels.fin,
+    horarios: teachingHorarios.map((h: any) => ({
+      id: h.id,
+      cursoId: h.cursoId,
+      aulaId: h.aulaId,
+      horaInicio: h.horaInicio,
+      horaFin: h.horaFin,
+      tipoCurso: h.tipoCurso,
+      grupo: h.grupo,
+      cursoCodigo: h.curso?.codigo,
+      cursoNombre: h.curso?.nombre,
+      cursoTeoria: h.curso?.horasTeoria,
+      cursoPractica: h.curso?.horasPractica,
+      cursoLaboratorio: h.curso?.horasLaboratorio,
+      aulaCapacidad: h.aula?.capacidad,
+    })),
+  }), [docenteQuery.data, formData, selectedSemestre, semestreDateLabels.inicio, semestreDateLabels.fin, teachingHorarios]);
+
+  useEffect(() => {
+    setPdfCache((currentCache) => {
+      const cachedItems = Object.values(currentCache).filter(Boolean);
+      if (cachedItems.length === 0) {
+        pdfCacheRef.current = currentCache;
+        return currentCache;
+      }
+
+      cachedItems.forEach((item) => {
+        if (item?.url) URL.revokeObjectURL(item.url);
+      });
+      pdfCacheRef.current = {};
+      return {};
+    });
+    setPreviewUrl('');
+    setPreviewOpen(false);
+  }, [pdfDataKey]);
 
   useEffect(() => {
     if (!validationErrorKey) {
@@ -879,31 +943,55 @@ const CargaHorariaPage: React.FC = () => {
     };
   };
 
-  const getGeneratedFormat = (formatNumber: 1 | 2 | 3) => {
+  const getGeneratedFormat = (formatNumber: PdfFormatNumber): GeneratedPdf | null => {
     if (formatNumber === 1) return generateFormat1();
     if (formatNumber === 2) return generateFormat2();
     return generateFormat3();
   };
 
-  const handlePreviewFormat = (formatNumber: 1 | 2 | 3) => {
+  const getCachedOrGeneratePdf = (formatNumber: PdfFormatNumber): CachedPdf | null => {
+    const cached = pdfCacheRef.current[formatNumber];
+    if (cached) return cached;
+
     const generated = getGeneratedFormat(formatNumber);
-    if (!generated) return;
+    if (!generated) return null;
 
     const url = URL.createObjectURL(generated.doc.output('blob'));
-    setPreviewUrl((currentUrl) => {
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl);
-      }
-      return url;
+    const nextItem = { url, filename: generated.filename };
+
+    setPdfCache((currentCache) => {
+      const previousItem = currentCache[formatNumber];
+      if (previousItem?.url) URL.revokeObjectURL(previousItem.url);
+
+      const nextCache = {
+        ...currentCache,
+        [formatNumber]: nextItem,
+      };
+      pdfCacheRef.current = nextCache;
+      return nextCache;
     });
+
+    return nextItem;
+  };
+
+  const handlePreviewFormat = (formatNumber: PdfFormatNumber) => {
+    const pdf = getCachedOrGeneratePdf(formatNumber);
+    if (!pdf) return;
+
+    setPreviewUrl(pdf.url);
     setPreviewOpen(true);
   };
 
-  const handleDownloadFormat = (formatNumber: 1 | 2 | 3) => {
-    const generated = getGeneratedFormat(formatNumber);
-    if (!generated) return;
+  const handleDownloadFormat = (formatNumber: PdfFormatNumber) => {
+    const pdf = getCachedOrGeneratePdf(formatNumber);
+    if (!pdf) return;
 
-    generated.doc.save(generated.filename);
+    const link = document.createElement('a');
+    link.href = pdf.url;
+    link.download = pdf.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   const getDocenteDisplayCategory = (categoria: string) => {
@@ -1658,9 +1746,6 @@ const CargaHorariaPage: React.FC = () => {
       <ModalPDF
         isOpen={previewOpen}
         onClose={() => {
-          if (previewUrl) {
-            URL.revokeObjectURL(previewUrl);
-          }
           setPreviewOpen(false);
           setPreviewUrl('');
         }}

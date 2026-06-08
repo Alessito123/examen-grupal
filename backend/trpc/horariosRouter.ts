@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { router, publicProcedure } from './context';
 import prisma from '../prisma/client';
 import { Dia, TipoCurso } from '@prisma/client';
@@ -46,6 +47,44 @@ export const horariosRouter = router({
       ],
     });
   }),
+
+  getByDocenteAndSemestre: publicProcedure
+    .input(z.object({
+      docenteId: z.number().int(),
+      semestre: z.string(),
+    }))
+    .query(async ({ ctx, input }) => {
+      if (!ctx.user) {
+        throw new TRPCError({
+          code: 'UNAUTHORIZED',
+          message: 'Debes iniciar sesion para consultar horarios.',
+        });
+      }
+
+      if (ctx.user.rol !== 'ADMIN' && ctx.user.id !== input.docenteId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'No puedes consultar la carga lectiva de otro docente.',
+        });
+      }
+
+      return prisma.horario.findMany({
+        where: {
+          docenteId: input.docenteId,
+          semestre: input.semestre,
+          tipoActividad: 'LECTIVA',
+        },
+        include: {
+          docente: true,
+          curso: true,
+          aula: true,
+        },
+        orderBy: [
+          { dia: 'asc' },
+          { horaInicio: 'asc' },
+        ],
+      });
+    }),
 
   generarAutomatico: publicProcedure
     .input(z.object({ semestre: z.string() }))
