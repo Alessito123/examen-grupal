@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Search, Plus, Award, RotateCcw, Tag, Trash2, PenLine, AlertTriangle, X } from 'lucide-react';
+import { BookOpen, Search, Plus, Award, RotateCcw, Tag, Trash2, PenLine, AlertTriangle, X, Calculator } from 'lucide-react';
 import DashboardLayout from '../layouts/DashboardLayout';
 import { trpc } from '../utils/trpc';
 import ModalNuevoCurso from '../components/ModalNuevoCurso';
@@ -10,6 +10,7 @@ const CursosPage: React.FC = () => {
   const query = trpc.cursos.getAll.useQuery();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTipo, setFilterTipo] = useState('');
+  const [filterCiclo, setFilterCiclo] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [cursoToDelete, setCursoToDelete] = useState<{id: number, nombre: string} | null>(null);
   const [cursoToEdit, setCursoToEdit] = useState<any>(null);
@@ -51,16 +52,30 @@ const CursosPage: React.FC = () => {
     return cursos.filter((c: any) => {
       const activeSearch = searchTerm || globalSearchTerm;
       const matchesSearch = c.nombre.toLowerCase().includes(activeSearch.toLowerCase()) || 
-                           (c.codigo && c.codigo.toLowerCase().includes(activeSearch.toLowerCase()));
-      const matchesTipo = !filterTipo || c.tipo.toLowerCase() === filterTipo.toLowerCase();
-      return matchesSearch && matchesTipo;
+                           (c.codigo && c.codigo.toLowerCase().includes(activeSearch.toLowerCase())) ||
+                           (c.departamentoResponsable && c.departamentoResponsable.toLowerCase().includes(activeSearch.toLowerCase()));
+      const matchesTipo = !filterTipo || (c.tipoPlan || '').toLowerCase() === filterTipo.toLowerCase();
+      const matchesCiclo = !filterCiclo || String(c.ciclo || '') === filterCiclo;
+      return matchesSearch && matchesTipo && matchesCiclo;
     });
-  }, [cursos, searchTerm, filterTipo, globalSearchTerm]);
+  }, [cursos, searchTerm, filterTipo, filterCiclo, globalSearchTerm]);
+
+  const planStats = useMemo(() => {
+    const activeCourses = cursos.filter((c: any) => c.activo !== false);
+    return {
+      total: cursos.length,
+      activos: activeCourses.length,
+      horas: activeCourses.reduce((sum: number, c: any) => sum + (c.horasTeoria || 0) + (c.horasPractica || 0) + (c.horasLaboratorio || 0), 0),
+      creditos: activeCourses.reduce((sum: number, c: any) => sum + (c.creditos || 0), 0),
+    };
+  }, [cursos]);
 
   const getTipoColor = (tipo: string) => {
     switch (tipo.toLowerCase()) {
-      case 'teoria': return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400';
-      case 'laboratorio': return 'bg-orange-500/10 text-orange-600 dark:text-orange-400';
+      case 's': return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400';
+      case 'ob': return 'bg-purple-500/10 text-purple-600 dark:text-purple-400';
+      case 'op': return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
+      case 'el': return 'bg-orange-500/10 text-orange-600 dark:text-orange-400';
       default: return 'bg-gray-500/10 text-gray-600 dark:text-gray-400';
     }
   };
@@ -77,9 +92,9 @@ const CursosPage: React.FC = () => {
           <div>
             <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
               <BookOpen className="text-purple-600" />
-              Gestión de Cursos
+              Plan de Estudios
             </h2>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">Administra el catálogo de asignaturas académicas.</p>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">Mantiene la malla curricular 2018 y sus horas T/P/L para asignación lectiva.</p>
           </div>
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -92,13 +107,28 @@ const CursosPage: React.FC = () => {
           </motion.button>
         </motion.div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-white/10 p-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Cursos activos</p>
+            <p className="text-2xl font-black text-gray-900 dark:text-white mt-1">{planStats.activos}</p>
+          </div>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-white/10 p-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Horas T/P/L del plan</p>
+            <p className="text-2xl font-black text-purple-600 mt-1">{planStats.horas}</p>
+          </div>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-white/10 p-4">
+            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Créditos activos</p>
+            <p className="text-2xl font-black text-blue-600 mt-1">{planStats.creditos}</p>
+          </div>
+        </div>
+
         {/* Search / Filter */}
         <div className="glass p-4 rounded-2xl flex flex-col md:flex-row gap-4 items-center justify-between border border-gray-200 dark:border-white/5">
           <div className="relative w-full md:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
-              placeholder="Buscar por nombre o código..."
+              placeholder="Buscar por curso, código o departamento..."
               className="w-full pl-10 pr-4 py-2.5"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -110,12 +140,24 @@ const CursosPage: React.FC = () => {
               value={filterTipo}
               onChange={(e) => setFilterTipo(e.target.value)}
             >
-              <option value="">Todos los tipos</option>
-              <option value="teoria">Teoría</option>
-              <option value="laboratorio">Laboratorio</option>
+              <option value="">Tipo curricular</option>
+              <option value="S">S</option>
+              <option value="OB">OB</option>
+              <option value="OP">OP</option>
+              <option value="EL">EL</option>
+            </select>
+            <select
+              className="w-full md:w-32 py-2"
+              value={filterCiclo}
+              onChange={(e) => setFilterCiclo(e.target.value)}
+            >
+              <option value="">Ciclo</option>
+              {Array.from({ length: 10 }, (_, index) => String(index + 1)).map((ciclo) => (
+                <option key={ciclo} value={ciclo}>{ciclo}</option>
+              ))}
             </select>
             <button 
-              onClick={() => { setSearchTerm(''); setFilterTipo(''); }}
+              onClick={() => { setSearchTerm(''); setFilterTipo(''); setFilterCiclo(''); }}
               className="p-2.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-gray-400 transition-colors"
             >
               <RotateCcw size={18} />
@@ -141,11 +183,14 @@ const CursosPage: React.FC = () => {
             </div>
           ) : (
             <div className="overflow-x-auto rounded-3xl border border-gray-200 dark:border-white/5 bg-white/50 dark:bg-white/[0.02] backdrop-blur-md custom-scrollbar">
-              <table className="w-full min-w-[900px] border-separate border-spacing-0">
+              <table className="w-full min-w-[1100px] border-separate border-spacing-0">
                 <thead>
                   <tr className="bg-gray-100/50 dark:bg-white/[0.03]">
-                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest first:rounded-tl-3xl">Nombre / Código</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Tipo</th>
+                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest first:rounded-tl-3xl">Curso del plan</th>
+                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Tipo / Ciclo</th>
+                    <th className="p-4 text-center text-xs font-bold text-gray-500 uppercase tracking-widest">T/P/L</th>
+                    <th className="p-4 text-center text-xs font-bold text-gray-500 uppercase tracking-widest">Total</th>
+                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Departamento</th>
                     <th className="p-4 text-center text-xs font-bold text-gray-500 uppercase tracking-widest">Créditos</th>
                     <th className="p-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest last:rounded-tr-3xl">Acciones</th>
                   </tr>
@@ -153,70 +198,94 @@ const CursosPage: React.FC = () => {
                 <tbody className="divide-y divide-gray-200 dark:divide-white/5">
                   {filteredCursos.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="p-12 text-center text-gray-500 italic">
+                      <td colSpan={7} className="p-12 text-center text-gray-500 italic">
                         No se encontraron cursos que coincidan con la búsqueda.
                       </td>
                     </tr>
                   ) : (
-                    filteredCursos.map((c: any, idx: number) => (
-                      <motion.tr
-                        key={c.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.03 }}
-                        className="hover:bg-gray-100/50 dark:hover:bg-white/[0.03] transition-colors group"
-                      >
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shadow-sm">
-                              <BookOpen size={18} />
+                    filteredCursos.map((c: any, idx: number) => {
+                      const totalHoras = (c.horasTeoria || 0) + (c.horasPractica || 0) + (c.horasLaboratorio || 0);
+                      return (
+                        <motion.tr
+                          key={c.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.03 }}
+                          className="hover:bg-gray-100/50 dark:hover:bg-white/[0.03] transition-colors group"
+                        >
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shadow-sm">
+                                <BookOpen size={18} />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">{c.nombre}</span>
+                                <span className="text-xs text-gray-500 uppercase tracking-wider">{c.codigo || 'S/C'} · Plan {c.planAnio || 2018}</span>
+                              </div>
                             </div>
-                            <div className="flex flex-col">
-                              <span className="font-semibold text-gray-900 dark:text-gray-100">{c.nombre}</span>
-                              <span className="text-xs text-gray-500 uppercase tracking-wider">{c.codigo || 'S/C'}</span>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex flex-col gap-1">
+                              <span className={`px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 w-fit uppercase tracking-tighter ${getTipoColor(c.tipoPlan || 'S')}`}>
+                                <Tag size={14} />
+                                {c.tipoPlan || 'S'}
+                              </span>
+                              <span className="text-xs text-gray-500 font-bold">Ciclo {c.ciclo || '-'}</span>
                             </div>
-                          </div>
-                        </td>
-                        <td className="p-4">
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 w-fit uppercase tracking-tighter ${getTipoColor(c.tipo)}`}>
-                            <Tag size={14} />
-                            {c.tipo}
-                          </span>
-                        </td>
-                        <td className="p-4 text-center">
-                          <span className="text-sm font-black text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-white/5 px-3 py-1 rounded-lg">
-                            {c.creditos} CR
-                          </span>
-                        </td>
-                        <td className="p-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button 
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setCursoToEdit(c);
-                                setIsModalOpen(true);
-                              }}
-                              className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-gray-400 hover:text-purple-600 transition-colors"
-                              title="Editar curso"
-                            >
-                              <PenLine size={18} />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setCursoToDelete({id: c.id, nombre: c.nombre});
-                              }}
-                              className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-gray-400 hover:text-red-600 transition-colors"
-                              title="Eliminar curso"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </div>
-                        </td>
-                      </motion.tr>
-                    ))
+                          </td>
+                          <td className="p-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <span className="text-[10px] font-black bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-1 rounded">T: {c.horasTeoria || 0}</span>
+                              <span className="text-[10px] font-black bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded">P: {c.horasPractica || 0}</span>
+                              <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded">L: {c.horasLaboratorio || 0}</span>
+                            </div>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className="inline-flex items-center gap-1 text-sm font-black text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-white/5 px-3 py-1 rounded-lg">
+                              <Calculator size={14} />
+                              {totalHoras} H
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <span className="text-xs font-bold text-gray-500 dark:text-gray-300 uppercase">
+                              {c.departamentoResponsable || 'INGENIERIA DE SISTEMAS'}
+                            </span>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className="text-sm font-black text-gray-900 dark:text-gray-100 bg-gray-100 dark:bg-white/5 px-3 py-1 rounded-lg">
+                              {c.creditos} CR
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button 
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setCursoToEdit(c);
+                                  setIsModalOpen(true);
+                                }}
+                                className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-gray-400 hover:text-purple-600 transition-colors"
+                                title="Editar curso"
+                              >
+                                <PenLine size={18} />
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setCursoToDelete({id: c.id, nombre: c.nombre});
+                                }}
+                                className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-gray-400 hover:text-red-600 transition-colors"
+                                title="Eliminar curso"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </td>
+                        </motion.tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

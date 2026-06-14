@@ -36,17 +36,26 @@ model Docente {
 }
 
 model Curso {
-  id               Int       @id @default(autoincrement())
-  nombre           String
-  tipo             TipoCurso @default(teoria)
-  creditos         Int
-  ciclo            Int?
-  codigo           String?
-  horasLaboratorio Int       @default(0)
-  horasPractica    Int       @default(0)
-  horasTeoria      Int       @default(0)
-  horarios         Horario[]
-  docentes         Docente[] @relation("DocenteCursos")
+  id                      Int       @id @default(autoincrement())
+  nombre                  String
+  tipo                    TipoCurso @default(teoria)
+  creditos                Int
+  ciclo                   Int?
+  codigo                  String?
+  horasLaboratorio        Int       @default(0)
+  horasPractica           Int       @default(0)
+  horasTeoria             Int       @default(0)
+  tipoPlan                String    @default("S")
+  escuela                 String    @default("Ingenieria de Sistemas")
+  departamentoResponsable String    @default("INGENIERIA DE SISTEMAS")
+  planAnio                Int       @default(2018)
+  activo                  Boolean   @default(true)
+  horarios                Horario[]
+  docentes                Docente[] @relation("DocenteCursos")
+
+  @@index([planAnio])
+  @@index([ciclo])
+  @@index([tipoPlan])
 }
 
 model Aula {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { trpc } from '../utils/trpc';
-import { X, Calendar, Clock, User, Users, BookOpen, School, AlertTriangle, CheckCircle2, Briefcase } from 'lucide-react';
+import { X, Calendar, Clock, User, Users, BookOpen, School, AlertTriangle, CheckCircle2, Briefcase, Calculator } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ModalCrearHorarioProps {
@@ -37,6 +37,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
   const docentes = trpc.docentes.getDocentesConDisponibilidad.useQuery({ semestre: formData.semestre });
   const cursos = trpc.cursos.getAll.useQuery();
   const aulas = trpc.aulas.getAll.useQuery();
+  const horarios = trpc.horarios.getAll.useQuery(undefined, { enabled: isOpen && formData.tipoActividad === 'LECTIVA' });
   const utils = trpc.useContext();
 
   const [conflictos, setConflictos] = useState<{ hasConflict: boolean; message: string } | null>(null);
@@ -142,10 +143,55 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     
     const isOddSem = formData.semestre.endsWith('I');
     return rawList.filter((c: any) => {
+      if (c.activo === false) return false;
       if (!c.ciclo) return true;
       return isOddSem ? c.ciclo % 2 === 1 : c.ciclo % 2 === 0;
     });
   }, [formData.docenteId, formData.semestre, cursos.data, docentes.data]);
+
+  const selectedCurso = React.useMemo(() => {
+    if (!formData.cursoId) return null;
+    return (cursos.data || []).find((c: any) => c.id === Number(formData.cursoId)) || null;
+  }, [cursos.data, formData.cursoId]);
+
+  const courseAssignmentSummary = React.useMemo(() => {
+    const rows = (horarios.data || []).filter((h: any) =>
+      h.docenteId === Number(formData.docenteId) &&
+      h.cursoId === Number(formData.cursoId) &&
+      h.semestre === formData.semestre &&
+      h.tipoActividad === 'LECTIVA' &&
+      h.id !== horarioToEdit?.id
+    );
+
+    const teoriaGroups = new Set(
+      rows
+        .filter((h: any) => h.tipoCurso !== 'laboratorio')
+        .map((h: any) => h.grupo || 'U')
+    );
+    const labGroups = new Set(
+      rows
+        .filter((h: any) => h.tipoCurso === 'laboratorio')
+        .map((h: any) => h.grupo || 'U')
+    );
+    if (selectedCurso && formData.cursoId && formData.docenteId) {
+      if (formData.tipoCurso === 'laboratorio') {
+        labGroups.add(formData.grupo || 'U');
+      } else {
+        teoriaGroups.add(formData.grupo || 'U');
+      }
+    }
+
+    const teoriaGroupCount = teoriaGroups.size;
+    const labGroupCount = labGroups.size;
+    const teoriaPracticaHoras = (selectedCurso?.horasTeoria || 0) + (selectedCurso?.horasPractica || 0);
+    const laboratorioHoras = selectedCurso?.horasLaboratorio || 0;
+
+    return {
+      teoriaGroupCount,
+      labGroupCount,
+      totalHoras: (teoriaPracticaHoras * teoriaGroupCount) + (laboratorioHoras * labGroupCount),
+    };
+  }, [formData.cursoId, formData.docenteId, formData.grupo, formData.semestre, formData.tipoCurso, horarioToEdit?.id, horarios.data, selectedCurso]);
 
   useEffect(() => {
     if (formData.docenteId && formData.cursoId) {
@@ -160,6 +206,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
   const createMutation = trpc.horarios.create.useMutation({
     onSuccess: () => {
       utils.horarios.getAll.invalidate();
+      utils.horarios.getByDocenteAndSemestre.invalidate();
       onSuccess();
       onClose();
     }
@@ -168,6 +215,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
   const updateMutation = trpc.horarios.update.useMutation({
     onSuccess: () => {
       utils.horarios.getAll.invalidate();
+      utils.horarios.getByDocenteAndSemestre.invalidate();
       onSuccess();
       onClose();
     }
@@ -208,7 +256,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
       <motion.div 
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white dark:bg-[#0f0f1a] w-full max-w-2xl rounded-[2.5rem] border border-gray-200 dark:border-white/10 shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar"
+        className="bg-white dark:bg-[#0f0f1a] w-full max-w-4xl rounded-[2.5rem] border border-gray-200 dark:border-white/10 shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar"
       >
         <div className="p-6 md:p-8 border-b border-gray-200 dark:border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -348,6 +396,51 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
                     <option value="GRUPO 5">GRUPO 5</option>
                   </select>
                 </div>
+
+                {selectedCurso && (
+                  <div className="md:col-span-2 rounded-2xl border border-purple-100 dark:border-purple-500/20 bg-purple-50/70 dark:bg-purple-500/10 p-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-purple-500">Carga del plan de estudios</p>
+                        <h4 className="text-sm font-black text-gray-900 dark:text-white mt-1">
+                          {selectedCurso.codigo || 'S/C'} · {selectedCurso.nombre}
+                        </h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-300 mt-1">
+                          Tipo {selectedCurso.tipoPlan || 'S'} · Ciclo {selectedCurso.ciclo || '-'} · {selectedCurso.creditos || 0} créditos
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 min-w-[220px]">
+                        <span className="text-center text-[11px] font-black bg-white dark:bg-black/20 text-purple-700 dark:text-purple-300 rounded-xl px-2 py-2">
+                          T: {selectedCurso.horasTeoria || 0}
+                        </span>
+                        <span className="text-center text-[11px] font-black bg-white dark:bg-black/20 text-blue-700 dark:text-blue-300 rounded-xl px-2 py-2">
+                          P: {selectedCurso.horasPractica || 0}
+                        </span>
+                        <span className="text-center text-[11px] font-black bg-white dark:bg-black/20 text-emerald-700 dark:text-emerald-300 rounded-xl px-2 py-2">
+                          L: {selectedCurso.horasLaboratorio || 0}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-purple-200/70 dark:border-purple-500/20 grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="rounded-xl bg-white dark:bg-black/20 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Grupos aula</p>
+                        <p className="text-xl font-black text-gray-900 dark:text-white">{courseAssignmentSummary.teoriaGroupCount}</p>
+                      </div>
+                      <div className="rounded-xl bg-white dark:bg-black/20 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Grupos lab.</p>
+                        <p className="text-xl font-black text-gray-900 dark:text-white">{courseAssignmentSummary.labGroupCount}</p>
+                      </div>
+                      <div className="rounded-xl bg-white dark:bg-black/20 p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-1">
+                          <Calculator size={11} /> Total lectivo
+                        </p>
+                        <p className="text-xl font-black text-purple-600">{courseAssignmentSummary.totalHoras} H</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <div className="space-y-2 md:col-span-2">

@@ -96,7 +96,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const allNavItems = [
     { label: 'Resumen', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['ADMIN', 'DOCENTE'] },
     { label: 'Creación de semestre', href: '/semestres', icon: <CalendarRange size={20} />, roles: ['ADMIN'] },
-    { label: 'Cursos', href: '/cursos', icon: <BookOpen size={20} />, roles: ['ADMIN'] },
+    { label: 'Plan de estudios', href: '/cursos', icon: <BookOpen size={20} />, roles: ['ADMIN'] },
     { label: 'Docentes', href: '/docentes', icon: <Users size={20} />, roles: ['ADMIN'] },
     { label: 'Aulas', href: '/aulas', icon: <School size={20} />, roles: ['ADMIN'] },
     { label: 'Horarios', href: '/horarios', icon: <Calendar size={20} />, roles: ['ADMIN', 'DOCENTE'] },

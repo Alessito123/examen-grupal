@@ -11,11 +11,21 @@ const cursoSchema = z.object({
   horasPractica: z.number().int().nonnegative().default(0),
   horasLaboratorio: z.number().int().nonnegative().default(0),
   tipo: z.enum(['teoria', 'laboratorio']).optional(),
+  tipoPlan: z.string().optional(),
+  escuela: z.string().optional(),
+  departamentoResponsable: z.string().optional(),
+  planAnio: z.number().int().positive().optional(),
+  activo: z.boolean().optional(),
 });
 
 export const cursosRouter = router({
   getAll: publicProcedure.query(async () => {
-    return prisma.curso.findMany();
+    return prisma.curso.findMany({
+      orderBy: [
+        { ciclo: 'asc' },
+        { codigo: 'asc' },
+      ],
+    });
   }),
 
   getById: publicProcedure
@@ -65,7 +75,12 @@ export const cursosRouter = router({
           horasTeoria: input.horasTeoria,
           horasPractica: input.horasPractica,
           horasLaboratorio: input.horasLaboratorio,
-          tipo: input.tipo || 'teoria'
+          tipo: input.tipo || 'teoria',
+          tipoPlan: input.tipoPlan || 'S',
+          escuela: input.escuela || 'Ingenieria de Sistemas',
+          departamentoResponsable: input.departamentoResponsable || 'INGENIERIA DE SISTEMAS',
+          planAnio: input.planAnio || 2018,
+          activo: input.activo ?? true
         }
       });
     }),
@@ -94,7 +109,12 @@ export const cursosRouter = router({
           horasTeoria: data.horasTeoria,
           horasPractica: data.horasPractica,
           horasLaboratorio: data.horasLaboratorio,
-          tipo: data.tipo || 'teoria'
+          tipo: data.tipo || 'teoria',
+          tipoPlan: data.tipoPlan || 'S',
+          escuela: data.escuela || 'Ingenieria de Sistemas',
+          departamentoResponsable: data.departamentoResponsable || 'INGENIERIA DE SISTEMAS',
+          planAnio: data.planAnio || 2018,
+          activo: data.activo ?? true
         }
       });
     }),

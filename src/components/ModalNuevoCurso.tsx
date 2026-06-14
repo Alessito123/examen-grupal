@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, BookOpen, Clock, Award, Hash, AlertCircle } from 'lucide-react';
+import { X, BookOpen, Clock, Award, Hash, AlertCircle, Building2, Layers } from 'lucide-react';
 import { trpc } from '../utils/trpc';
 
 interface ModalNuevoCursoProps {
@@ -19,7 +19,12 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
     ciclo: 1,
     horasTeoria: 0,
     horasPractica: 0,
-    horasLaboratorio: 0
+    horasLaboratorio: 0,
+    tipoPlan: 'S',
+    escuela: 'Ingenieria de Sistemas',
+    departamentoResponsable: 'INGENIERIA DE SISTEMAS',
+    planAnio: 2018,
+    activo: true
   });
 
   const [isCodeManual, setIsCodeManual] = useState(false);
@@ -50,7 +55,12 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
         ciclo: cursoToEdit.ciclo || 1,
         horasTeoria: cursoToEdit.horasTeoria || 0,
         horasPractica: cursoToEdit.horasPractica || 0,
-        horasLaboratorio: cursoToEdit.horasLaboratorio || 0
+        horasLaboratorio: cursoToEdit.horasLaboratorio || 0,
+        tipoPlan: cursoToEdit.tipoPlan || 'S',
+        escuela: cursoToEdit.escuela || 'Ingenieria de Sistemas',
+        departamentoResponsable: cursoToEdit.departamentoResponsable || 'INGENIERIA DE SISTEMAS',
+        planAnio: cursoToEdit.planAnio || 2018,
+        activo: cursoToEdit.activo ?? true
       });
       setIsCodeManual(true);
     } else {
@@ -62,7 +72,12 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
         ciclo: 1,
         horasTeoria: 0,
         horasPractica: 0,
-        horasLaboratorio: 0
+        horasLaboratorio: 0,
+        tipoPlan: 'S',
+        escuela: 'Ingenieria de Sistemas',
+        departamentoResponsable: 'INGENIERIA DE SISTEMAS',
+        planAnio: 2018,
+        activo: true
       });
       setIsCodeManual(false);
     }
@@ -87,7 +102,21 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const { nombre, tipo, creditos, codigo, ciclo, horasTeoria, horasPractica, horasLaboratorio } = formData;
+    const {
+      nombre,
+      tipo,
+      creditos,
+      codigo,
+      ciclo,
+      horasTeoria,
+      horasPractica,
+      horasLaboratorio,
+      tipoPlan,
+      escuela,
+      departamentoResponsable,
+      planAnio,
+      activo,
+    } = formData;
     const payload = {
       nombre,
       tipo: tipo as 'teoria' | 'laboratorio',
@@ -96,7 +125,12 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
       ciclo: Number(ciclo),
       horasTeoria: Number(horasTeoria),
       horasPractica: Number(horasPractica),
-      horasLaboratorio: Number(horasLaboratorio)
+      horasLaboratorio: Number(horasLaboratorio),
+      tipoPlan,
+      escuela,
+      departamentoResponsable,
+      planAnio: Number(planAnio),
+      activo,
     };
 
     if (cursoToEdit) {
@@ -161,7 +195,7 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
       <motion.div 
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white dark:bg-[#0f0f1a] w-full max-w-lg rounded-[2.5rem] border border-gray-200 dark:border-white/10 shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar"
+        className="bg-white dark:bg-[#0f0f1a] w-full max-w-3xl rounded-[2.5rem] border border-gray-200 dark:border-white/10 shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar"
       >
         <div className="p-6 md:p-8 border-b border-gray-200 dark:border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -170,7 +204,7 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
             </div>
             <div>
               <h3 className="text-2xl font-bold text-foreground dark:text-white">
-                {cursoToEdit ? 'Editar Curso' : 'Nuevo Curso'}
+                {cursoToEdit ? 'Editar Curso del Plan' : 'Nuevo Curso del Plan'}
               </h3>
               <p className="text-sm text-muted-foreground dark:text-gray-400">
                 {cursoToEdit ? 'Modificar los datos de la asignatura académica.' : 'Registrar una nueva asignatura académica.'}
@@ -258,6 +292,78 @@ const ModalNuevoCurso: React.FC<ModalNuevoCursoProps> = ({ isOpen, onClose, onSu
                 max="10"
                 value={formData.ciclo}
                 onChange={handleCicloChange}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <Layers size={12} /> Tipo curricular
+              </label>
+              <select
+                value={formData.tipoPlan}
+                onChange={(e) => setFormData({ ...formData, tipoPlan: e.target.value })}
+                className="w-full"
+              >
+                <option value="S">S - Especialidad</option>
+                <option value="OB">OB - Obligatorio</option>
+                <option value="OP">OP - Optativo</option>
+                <option value="EL">EL - Electivo</option>
+                <option value="EG-OB">EG-OB</option>
+                <option value="EG-OP">EG-OP</option>
+                <option value="EG-EL">EG-EL</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <Hash size={12} /> Plan
+              </label>
+              <input
+                type="number"
+                min="2000"
+                max="2100"
+                value={formData.planAnio}
+                onChange={(e) => setFormData({ ...formData, planAnio: parseInt(e.target.value) || 2018 })}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                Estado
+              </label>
+              <select
+                value={formData.activo ? 'true' : 'false'}
+                onChange={(e) => setFormData({ ...formData, activo: e.target.value === 'true' })}
+                className="w-full"
+              >
+                <option value="true">Activo</option>
+                <option value="false">Inactivo</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <BookOpen size={12} /> Escuela
+              </label>
+              <input
+                type="text"
+                value={formData.escuela}
+                onChange={(e) => setFormData({ ...formData, escuela: e.target.value })}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <Building2 size={12} /> Departamento responsable
+              </label>
+              <input
+                type="text"
+                value={formData.departamentoResponsable}
+                onChange={(e) => setFormData({ ...formData, departamentoResponsable: e.target.value.toUpperCase() })}
                 className="w-full"
               />
             </div>
