@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { router, publicProcedure } from './context';
+import { protectedProcedure, router } from './context';
 import prisma from '../prisma/client';
 
 const inputSchema = z.object({
@@ -8,12 +8,12 @@ const inputSchema = z.object({
 }).optional();
 
 export const notificacionesRouter = router({
-  getAll: publicProcedure
+  getAll: protectedProcedure
     .input(inputSchema)
-    .query(async ({ input, ctx }) => {
-      const isTeacher = (ctx.user?.rol === 'DOCENTE') || (input?.rol === 'DOCENTE');
-      const teacherId = ctx.user?.id || input?.docenteId;
-      const isAdmin = (ctx.user?.rol === 'ADMIN') || (input?.rol === 'ADMIN');
+    .query(async ({ ctx }) => {
+      const isTeacher = ctx.user.rol === 'DOCENTE';
+      const teacherId = ctx.user.id;
+      const isAdmin = ctx.user.rol === 'ADMIN';
 
       if (isTeacher && teacherId) {
         return (prisma as any).notificacion.findMany({
@@ -37,12 +37,12 @@ export const notificacionesRouter = router({
       });
     }),
 
-  getUnread: publicProcedure
+  getUnread: protectedProcedure
     .input(inputSchema)
-    .query(async ({ input, ctx }) => {
-      const isTeacher = (ctx.user?.rol === 'DOCENTE') || (input?.rol === 'DOCENTE');
-      const teacherId = ctx.user?.id || input?.docenteId;
-      const isAdmin = (ctx.user?.rol === 'ADMIN') || (input?.rol === 'ADMIN');
+    .query(async ({ ctx }) => {
+      const isTeacher = ctx.user.rol === 'DOCENTE';
+      const teacherId = ctx.user.id;
+      const isAdmin = ctx.user.rol === 'ADMIN';
 
       if (isTeacher && teacherId) {
         return (prisma as any).notificacion.findMany({
@@ -70,12 +70,12 @@ export const notificacionesRouter = router({
       });
     }),
 
-  markAllAsRead: publicProcedure
+  markAllAsRead: protectedProcedure
     .input(inputSchema)
-    .mutation(async ({ input, ctx }) => {
-      const isTeacher = (ctx.user?.rol === 'DOCENTE') || (input?.rol === 'DOCENTE');
-      const teacherId = ctx.user?.id || input?.docenteId;
-      const isAdmin = (ctx.user?.rol === 'ADMIN') || (input?.rol === 'ADMIN');
+    .mutation(async ({ ctx }) => {
+      const isTeacher = ctx.user.rol === 'DOCENTE';
+      const teacherId = ctx.user.id;
+      const isAdmin = ctx.user.rol === 'ADMIN';
 
       if (isTeacher && teacherId) {
         await (prisma as any).notificacion.updateMany({
@@ -102,12 +102,12 @@ export const notificacionesRouter = router({
       return { success: true };
     }),
 
-  clearAll: publicProcedure
+  clearAll: protectedProcedure
     .input(inputSchema)
-    .mutation(async ({ input, ctx }) => {
-      const isTeacher = (ctx.user?.rol === 'DOCENTE') || (input?.rol === 'DOCENTE');
-      const teacherId = ctx.user?.id || input?.docenteId;
-      const isAdmin = (ctx.user?.rol === 'ADMIN') || (input?.rol === 'ADMIN');
+    .mutation(async ({ ctx }) => {
+      const isTeacher = ctx.user.rol === 'DOCENTE';
+      const teacherId = ctx.user.id;
+      const isAdmin = ctx.user.rol === 'ADMIN';
 
       if (isTeacher && teacherId) {
         await (prisma as any).notificacion.deleteMany({

@@ -1,15 +1,17 @@
-export const SCHEDULE_DAYS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'] as const;
+import {
+  formatHour24,
+  SCHEDULE_DAYS,
+  SCHEDULE_END_HOUR,
+  SCHEDULE_START_HOUR,
+} from '../../shared/schedule';
 
-export const SCHEDULE_START_HOUR = 7;
-export const SCHEDULE_END_HOUR = 20;
+export { SCHEDULE_DAYS, SCHEDULE_END_HOUR, SCHEDULE_START_HOUR };
 
 const formatHour12 = (hour: number) => {
   const suffix = hour >= 12 ? 'PM' : 'AM';
   const hour12 = hour % 12 === 0 ? 12 : hour % 12;
   return `${hour12.toString().padStart(2, '0')}:00 ${suffix}`;
 };
-
-export const formatHour24 = (hour: number) => `${hour.toString().padStart(2, '0')}:00`;
 
 export const formatScheduleRangeLabel = (startHour: number, endHour: number) => {
   return `${formatHour12(startHour)} - ${formatHour12(endHour)}`;

@@ -43,7 +43,7 @@ const AulasPage: React.FC = () => {
     }
   };
 
-  const aulas = query.data || [];
+  const aulas = useMemo(() => query.data || [], [query.data]);
   const loading = query.isLoading;
   const error = query.error?.message;
 

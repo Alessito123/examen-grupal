@@ -4,24 +4,94 @@ import { z } from 'zod';
 import { router, publicProcedure } from './context';
 import { TRPCError } from '@trpc/server';
 import prisma, { basePrisma } from '../prisma/client';
+import {
+  CATEGORIAS_POR_CONDICION,
+  FACULTADES_DEPARTAMENTOS,
+  INSTITUTIONAL_EMAIL_REGEX,
+  REGIMEN_POR_CATEGORIA_CONTRATADA,
+  REGIMENES_POR_CONDICION,
+} from '../../shared/academic';
 
-const docenteSchema = z.object({
+const categorias = [
+  'principal', 'asociado', 'auxiliar', 'jefe_practica',
+  'tipo_a1', 'tipo_a2', 'tipo_a3', 'tipo_b1', 'tipo_b2', 'tipo_b3',
+  'cesante', 'experto', 'emerito', 'invitado_especial',
+] as const;
+const condiciones = ['ORDINARIO', 'EXTRAORDINARIO', 'CONTRATADO'] as const;
+const dedicaciones = [
+  'DE_EXCLUSIVA', 'DOCENTE_INVESTIGADOR', 'TP_4H', 'TP_8H', 'TP_10H',
+  'TP_12H', 'TP_16H', 'TP_20H', 'TC_40H',
+] as const;
+const sedes = ['TRUJILLO', 'VALLE_JEQUETEPEQUE', 'HUAMACHUCO', 'SANTIAGO_DE_CHUCO'] as const;
+
+const docenteSchemaBase = z.object({
   nombre: z.string().min(1),
-  categoria: z.enum(['principal', 'asociado', 'auxiliar', 'jefe_practica', 'profesor', 'alumno']),
-  condicion: z.enum(['NOMBRADO', 'CONTRATADO']).optional(),
-  dedicacion: z.enum(['DE_EXCLUSIVA', 'TP', 'TP_8H', 'TP_10H', 'TP_12H', 'TP_16H', 'TP_20H', 'TC_40H']).optional(),
+  categoria: z.enum(categorias),
+  condicion: z.enum(condiciones).optional(),
+  dedicacion: z.enum(dedicaciones).optional(),
   codigoIBM: z.string().nullish(),
   fechaNombramiento: z.string().nullish(),
   fechaContrato: z.string().nullish(),
   dni: z.string().nullish(),
-  email: z.string().nullish(),
+  email: z.string().trim().email('Consigna un correo valido.').nullish(),
   password: z.string().nullish(),
   rol: z.enum(['ADMIN', 'DOCENTE']).optional(),
   facultad: z.string().optional(),
   departamento: z.string().optional(),
   escuela: z.string().optional(),
+  sedes: z.array(z.enum(sedes)).min(1, 'Selecciona al menos una sede.').optional(),
   cursos: z.array(z.number().int()).optional(),
 });
+
+const validateDocente = (data: z.infer<typeof docenteSchemaBase>, ctx: z.RefinementCtx) => {
+  const condicion = data.condicion || 'ORDINARIO';
+  const categoriasPermitidas = CATEGORIAS_POR_CONDICION[condicion]?.map((item) => item.value) || [];
+  if (!categoriasPermitidas.includes(data.categoria)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['categoria'],
+      message: 'La categoria no corresponde a la condicion seleccionada.',
+    });
+  }
+
+  const regimenesPermitidos = REGIMENES_POR_CONDICION[condicion]?.map((item) => item.value) || [];
+  if (data.dedicacion && !regimenesPermitidos.includes(data.dedicacion)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['dedicacion'],
+      message: 'El regimen no corresponde a la condicion seleccionada.',
+    });
+  }
+
+  const regimenContratado = REGIMEN_POR_CATEGORIA_CONTRATADA[data.categoria];
+  if (condicion === 'CONTRATADO' && regimenContratado && data.dedicacion !== regimenContratado) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['dedicacion'],
+      message: 'El regimen debe corresponder al tipo de contrato seleccionado.',
+    });
+  }
+
+  if (data.facultad && data.departamento) {
+    const departamentos = FACULTADES_DEPARTAMENTOS[data.facultad] || [];
+    if (!departamentos.includes(data.departamento)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['departamento'],
+        message: 'El departamento academico no pertenece a la facultad seleccionada.',
+      });
+    }
+  }
+};
+
+const docenteSchema = docenteSchemaBase.superRefine(validateDocente);
+const docenteUpdateSchema = docenteSchemaBase.extend({ id: z.number().int() }).superRefine(validateDocente);
+
+const categoryPriorities: Record<string, number> = {
+  principal: 1, asociado: 2, auxiliar: 3, emerito: 4, experto: 5,
+  invitado_especial: 6, cesante: 7, tipo_a1: 8, tipo_b1: 9,
+  tipo_a2: 10, tipo_b2: 11, tipo_a3: 12, tipo_b3: 13, jefe_practica: 14,
+};
 
 export const docentesRouter = router({
   getAll: publicProcedure.query(async () => {
@@ -35,9 +105,8 @@ export const docentesRouter = router({
       if (!Array.isArray(docentes)) return [];
 
       return docentes.sort((a: any, b: any) => {
-        const priorities = { principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, profesor: 5, alumno: 6 } as any;
-        const pA = priorities[a.categoria] || 99;
-        const pB = priorities[b.categoria] || 99;
+        const pA = categoryPriorities[a.categoria] || 99;
+        const pB = categoryPriorities[b.categoria] || 99;
         if (pA !== pB) return pA - pB;
         
         // Manejo seguro de antiguedad
@@ -100,6 +169,40 @@ export const docentesRouter = router({
       return { exists: !!docente };
     }),
 
+  checkEmail: publicProcedure
+    .input(z.object({
+      email: z.string(),
+      excludeId: z.number().int().optional(),
+    }))
+    .query(async ({ input }) => {
+      const email = input.email.trim().toLowerCase();
+      if (!email || !INSTITUTIONAL_EMAIL_REGEX.test(email)) return { exists: false };
+      const docente = await prisma.docente.findFirst({
+        where: {
+          email,
+          NOT: input.excludeId ? { id: input.excludeId } : undefined,
+        },
+      });
+      return { exists: !!docente };
+    }),
+
+  checkCodigoIBM: publicProcedure
+    .input(z.object({
+      codigoIBM: z.string(),
+      excludeId: z.number().int().optional(),
+    }))
+    .query(async ({ input }) => {
+      const codigoIBM = input.codigoIBM.trim().toUpperCase();
+      if (!codigoIBM) return { exists: false };
+      const docente = await prisma.docente.findFirst({
+        where: {
+          codigoIBM,
+          NOT: input.excludeId ? { id: input.excludeId } : undefined,
+        },
+      });
+      return { exists: !!docente };
+    }),
+
   create: publicProcedure
     .input(docenteSchema)
     .mutation(async ({ input }) => {
@@ -116,16 +219,38 @@ export const docentesRouter = router({
         const date = new Date(dateStr);
         return isNaN(date.getTime()) ? null : date;
       };
-      const nextCondicion = data.condicion || 'NOMBRADO';
+      const nextCondicion = data.condicion || 'ORDINARIO';
+
+      if (data.rol !== 'ADMIN' && data.email && !INSTITUTIONAL_EMAIL_REGEX.test(data.email)) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Consigna un correo institucional con el formato apellido@unitru.edu.pe.',
+        });
+      }
+
+      if (data.email) {
+        const existingEmail = await basePrisma.docente.findUnique({ where: { email: data.email.toLowerCase() } });
+        if (existingEmail) throw new TRPCError({ code: 'CONFLICT', message: 'El correo institucional ya esta registrado.' });
+      }
+
+      const normalizedCodigoIBM = typeof data.codigoIBM === 'string' && data.codigoIBM.trim()
+        ? data.codigoIBM.trim().toUpperCase()
+        : null;
+      if (normalizedCodigoIBM) {
+        const existingCodigoIBM = await basePrisma.docente.findUnique({ where: { codigoIBM: normalizedCodigoIBM } });
+        if (existingCodigoIBM) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'El codigo IBM ya esta registrado.' });
+        }
+      }
 
       return basePrisma.docente.create({ 
         data: {
           ...data,
           condicion: nextCondicion,
           dni: (typeof data.dni === 'string' && data.dni.trim() !== "") ? data.dni : null,
-          email: (typeof data.email === 'string' && data.email.trim() !== "") ? data.email : null,
-          codigoIBM: (typeof data.codigoIBM === 'string' && data.codigoIBM.trim() !== "") ? data.codigoIBM : null,
-          fechaNombramiento: nextCondicion === 'NOMBRADO' ? parseDate(fechaNombramiento) : null,
+          email: (typeof data.email === 'string' && data.email.trim() !== "") ? data.email.trim().toLowerCase() : null,
+          codigoIBM: normalizedCodigoIBM,
+          fechaNombramiento: nextCondicion === 'ORDINARIO' ? parseDate(fechaNombramiento) : null,
           fechaContrato: nextCondicion === 'CONTRATADO' ? parseDate(fechaContrato) : null,
           password: hashedPassword,
           cursos: (cursos && Array.isArray(cursos) && cursos.length > 0) ? {
@@ -136,7 +261,7 @@ export const docentesRouter = router({
     }),
 
   update: publicProcedure
-    .input(docenteSchema.extend({ id: z.number().int() }))
+    .input(docenteUpdateSchema)
     .mutation(async ({ input }) => {
       try {
         const { id, password, fechaNombramiento, fechaContrato, cursos, ...data } = input;
@@ -174,7 +299,35 @@ export const docentesRouter = router({
           return isNaN(date.getTime()) ? null : date;
         };
         const hasField = (field: keyof typeof input) => Object.prototype.hasOwnProperty.call(input, field);
-        const nextCondicion = data.condicion || existingDocente.condicion || 'NOMBRADO';
+        const nextCondicion = data.condicion || existingDocente.condicion || 'ORDINARIO';
+
+        if (existingDocente.rol !== 'ADMIN' && data.email && !INSTITUTIONAL_EMAIL_REGEX.test(data.email)) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Consigna un correo institucional con el formato apellido@unitru.edu.pe.',
+          });
+        }
+
+        if (typeof data.email === 'string' && data.email.trim()) {
+          const duplicateEmail = await (prisma as any).docente.findFirst({
+            where: { email: data.email.trim().toLowerCase(), NOT: { id } },
+          });
+          if (duplicateEmail) {
+            throw new TRPCError({ code: 'CONFLICT', message: 'El correo institucional ya esta registrado.' });
+          }
+        }
+
+        const normalizedCodigoIBM = typeof data.codigoIBM === 'string' && data.codigoIBM.trim()
+          ? data.codigoIBM.trim().toUpperCase()
+          : null;
+        if (normalizedCodigoIBM) {
+          const duplicateCodigoIBM = await basePrisma.docente.findFirst({
+            where: { codigoIBM: normalizedCodigoIBM, NOT: { id } },
+          });
+          if (duplicateCodigoIBM) {
+            throw new TRPCError({ code: 'CONFLICT', message: 'El codigo IBM ya esta registrado.' });
+          }
+        }
 
         const updateData: any = {
           nombre: data.nombre,
@@ -184,13 +337,14 @@ export const docentesRouter = router({
         if (data.condicion !== undefined) updateData.condicion = nextCondicion;
         if (data.dedicacion !== undefined) updateData.dedicacion = data.dedicacion;
         if (hasField('dni')) updateData.dni = (typeof data.dni === 'string' && data.dni.trim() !== "") ? data.dni : null;
-        if (hasField('email')) updateData.email = (typeof data.email === 'string' && data.email.trim() !== "") ? data.email : null;
-        if (hasField('codigoIBM')) updateData.codigoIBM = (typeof data.codigoIBM === 'string' && data.codigoIBM.trim() !== "") ? data.codigoIBM : null;
+        if (hasField('email')) updateData.email = (typeof data.email === 'string' && data.email.trim() !== "") ? data.email.trim().toLowerCase() : null;
+        if (hasField('codigoIBM')) updateData.codigoIBM = normalizedCodigoIBM;
         if (data.facultad !== undefined) updateData.facultad = data.facultad;
         if (data.departamento !== undefined) updateData.departamento = data.departamento;
         if (data.escuela !== undefined) updateData.escuela = data.escuela;
+        if (data.sedes !== undefined) updateData.sedes = data.sedes;
         if (data.rol !== undefined) updateData.rol = data.rol;
-        if (hasField('fechaNombramiento')) updateData.fechaNombramiento = nextCondicion === 'NOMBRADO' ? parseDate(fechaNombramiento) : null;
+        if (hasField('fechaNombramiento')) updateData.fechaNombramiento = nextCondicion === 'ORDINARIO' ? parseDate(fechaNombramiento) : null;
         if (hasField('fechaContrato')) updateData.fechaContrato = nextCondicion === 'CONTRATADO' ? parseDate(fechaContrato) : null;
         
         if (cursos && Array.isArray(cursos)) {
@@ -314,9 +468,8 @@ export const docentesRouter = router({
           disponibilidad: matchingDisp ? matchingDisp.bloques : docente.disponibilidad
         };
       }).sort((a: any, b: any) => {
-        const priorities = { principal: 1, asociado: 2, auxiliar: 3, jefe_practica: 4, profesor: 5, alumno: 6 } as any;
-        const pA = priorities[a.categoria] || 99;
-        const pB = priorities[b.categoria] || 99;
+        const pA = categoryPriorities[a.categoria] || 99;
+        const pB = categoryPriorities[b.categoria] || 99;
         if (pA !== pB) return pA - pB;
         return (b.antiguedad || 0) - (a.antiguedad || 0);
       });

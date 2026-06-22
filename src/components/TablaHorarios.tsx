@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Clock, User, BookOpen, MapPin, Tag, Calendar, Trash2, PenLine, ArrowLeftRight } from 'lucide-react';
+import { Clock, BookOpen, MapPin, Tag, Calendar, Trash2, PenLine, ArrowLeftRight } from 'lucide-react';
 
 interface Horario {
   id: number;
@@ -11,7 +11,12 @@ interface Horario {
   cursoId: number | null;
   aulaId: number | null;
   docente: { nombre: string; antiguedad: number };
-  curso: { nombre: string } | null;
+  curso: {
+    nombre: string;
+    mallaId?: number | null;
+    departamentoResponsable?: string;
+    malla?: { departamento: string } | null;
+  } | null;
   aula: { nombre: string } | null;
   tipoCurso: string | null;
   tipoActividad?: string;
@@ -52,7 +57,7 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
     try {
       const date = new Date(dateStr);
       return date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'UTC' });
-    } catch (e) {
+    } catch {
       return dateStr;
     }
   };
@@ -60,17 +65,26 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
   const showActions = isAdmin || (currentUser?.rol === 'DOCENTE');
 
   return (
-    <div className="overflow-x-auto rounded-[2.5rem] border border-gray-200 dark:border-white/5 bg-white/50 dark:bg-white/[0.02] backdrop-blur-md shadow-sm custom-scrollbar">
-      <table className="w-full min-w-[1000px] border-separate border-spacing-0">
+    <div className="overflow-hidden rounded-[2.5rem] border border-gray-200 bg-white/50 shadow-sm backdrop-blur-md dark:border-white/5 dark:bg-white/[0.02]">
+      <table className="w-full table-fixed border-separate border-spacing-0">
+        <colgroup>
+          <col style={{ width: showActions ? '10%' : '11%' }} />
+          <col style={{ width: showActions ? '16%' : '18%' }} />
+          <col style={{ width: showActions ? '20%' : '22%' }} />
+          <col style={{ width: showActions ? '23%' : '27%' }} />
+          <col style={{ width: showActions ? '11%' : '12%' }} />
+          <col style={{ width: '10%' }} />
+          {showActions && <col style={{ width: '10%' }} />}
+        </colgroup>
         <thead>
           <tr className="bg-gray-100/50 dark:bg-white/[0.03]">
-            <th className="p-6 text-left text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest first:rounded-tl-[2.5rem]">Día</th>
-            <th className="p-6 text-left text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Horario</th>
-            <th className="p-6 text-left text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Docente</th>
-            <th className="p-6 text-left text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Curso</th>
-            <th className="p-6 text-left text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Aula</th>
-            <th className={`p-6 text-left text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ${showActions ? '' : 'last:rounded-tr-[2.5rem]'}`}>Tipo</th>
-            {showActions && <th className="p-6 text-right text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest last:rounded-tr-[2.5rem]">Acciones</th>}
+            <th className="p-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 first:rounded-tl-[2.5rem] xl:p-4 dark:text-gray-500">Día</th>
+            <th className="p-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 xl:p-4 dark:text-gray-500">Horario</th>
+            <th className="p-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 xl:p-4 dark:text-gray-500">Docente</th>
+            <th className="p-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 xl:p-4 dark:text-gray-500">Curso</th>
+            <th className="p-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 xl:p-4 dark:text-gray-500">Aula</th>
+            <th className={`p-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 xl:p-4 dark:text-gray-500 ${showActions ? '' : 'last:rounded-tr-[2.5rem]'}`}>Tipo</th>
+            {showActions && <th className="p-3 text-right text-[10px] font-bold uppercase tracking-wider text-gray-400 last:rounded-tr-[2.5rem] xl:p-4 dark:text-gray-500">Acciones</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200 dark:divide-white/5">
@@ -89,56 +103,54 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
                 transition={{ delay: index * 0.03 }}
                 className="group hover:bg-gray-100/50 dark:hover:bg-white/[0.03] transition-colors"
               >
-                <td className="p-6">
-                  <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-2 w-fit uppercase tracking-tighter ${getDiaColor(h.dia)}`}>
-                    <Calendar size={12} />
+                <td className="p-3 align-middle xl:p-4">
+                  <span className={`flex w-fit items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-[9px] font-black uppercase tracking-tighter xl:px-3 ${getDiaColor(h.dia)}`}>
+                    <Calendar size={11} className="shrink-0" />
                     {h.dia}
                   </span>
                 </td>
-                <td className="p-6">
+                <td className="p-3 align-middle xl:p-4">
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-bold text-foreground dark:text-white flex items-center gap-2">
-                      <Clock size={14} className="text-purple-500" />
+                    <span className="flex items-center gap-1.5 whitespace-nowrap text-[11px] font-bold text-foreground xl:text-xs dark:text-white">
+                      <Clock size={13} className="shrink-0 text-purple-500" />
                       {formatTime(h.horaInicio)} - {formatTime(h.horaFin)}
                     </span>
                   </div>
                 </td>
-                <td className="p-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400 font-bold text-xs shadow-sm">
+                <td className="p-3 align-middle xl:p-4">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-500/10 text-xs font-bold text-purple-600 shadow-sm 2xl:flex dark:text-purple-400">
                       {h.docente.nombre.charAt(0)}
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold text-muted-foreground dark:text-gray-300">{h.docente.nombre}</span>
-                      <span className="text-[10px] font-medium text-gray-400">Antigüedad: {h.docente.antiguedad} años</span>
+                    <div className="flex min-w-0 flex-col">
+                      <span className="break-words text-[11px] font-semibold leading-4 text-muted-foreground xl:text-xs dark:text-gray-300">{h.docente.nombre}</span>
+                      <span className="mt-0.5 text-[9px] font-medium text-gray-400">Antigüedad: {h.docente.antiguedad} años</span>
                     </div>
                   </div>
                 </td>
-                <td className="p-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                <td className="p-3 align-middle xl:p-4">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <div className="mt-0.5 hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 2xl:flex dark:text-blue-400">
                       <BookOpen size={16} />
                     </div>
-                    <span className="text-sm font-bold text-foreground dark:text-white">{h.curso?.nombre || h.actividadNoLectiva || 'Actividad no lectiva'}</span>
+                    <span className="break-words text-[11px] font-bold leading-4 text-foreground xl:text-xs dark:text-white">{h.curso?.nombre || h.actividadNoLectiva || 'Actividad no lectiva'}</span>
                   </div>
                 </td>
-                <td className="p-6">
-                  <div className="flex items-center gap-3 text-muted-foreground dark:text-gray-400">
-                    <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-                      <MapPin size={16} />
-                    </div>
-                    <span className="text-sm font-medium">{h.aula?.nombre || 'Sin aula'}</span>
+                <td className="p-3 align-middle xl:p-4">
+                  <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground dark:text-gray-400">
+                    <MapPin size={14} className="shrink-0" />
+                    <span className="break-words text-[11px] font-medium xl:text-xs">{h.aula?.nombre || 'Sin aula'}</span>
                   </div>
                 </td>
-                <td className="p-6">
-                  <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black flex items-center gap-2 w-fit uppercase tracking-tighter ${getTipoColor(h.tipoCurso)}`}>
-                    <Tag size={12} />
+                <td className="p-3 align-middle xl:p-4">
+                  <span className={`flex w-fit max-w-full items-center gap-1 rounded-xl px-2 py-1.5 text-[8px] font-black uppercase tracking-tighter xl:text-[9px] ${getTipoColor(h.tipoCurso)}`}>
+                    <Tag size={10} className="shrink-0" />
                     {h.tipoCurso || h.tipoActividad || 'NO_LECTIVA'}
                   </span>
                 </td>
                 {showActions && (
-                  <td className="p-6 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  <td className="p-2 text-right align-middle xl:p-3">
+                    <div className="flex items-center justify-end gap-0.5 xl:gap-1">
                       {isAdmin && (
                         <>
                           <button 
@@ -147,7 +159,7 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
                               e.stopPropagation();
                               if (onEdit) onEdit(h);
                             }}
-                            className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-gray-400 hover:text-purple-600 transition-colors"
+                            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-purple-600 xl:p-2 dark:hover:bg-white/5"
                             title="Editar horario"
                           >
                             <PenLine size={18} />
@@ -158,7 +170,7 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
                               e.stopPropagation();
                               if (onDelete) onDelete(h.id, `${h.curso?.nombre || h.actividadNoLectiva || 'Actividad no lectiva'} (${h.docente.nombre})`);
                             }}
-                            className="p-2 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-gray-400 hover:text-red-600 transition-colors"
+                            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 xl:p-2 dark:hover:bg-red-500/10"
                             title="Eliminar horario"
                           >
                             <Trash2 size={18} />
@@ -172,16 +184,17 @@ const TablaHorarios: React.FC<TablaHorariosProps> = ({ horarios, onEdit, onDelet
                             e.stopPropagation();
                             if (onProposeSwap) onProposeSwap(h.id, h.curso?.nombre || 'Actividad no lectiva', h.docente.nombre, h.docente.antiguedad);
                           }}
-                          className="flex items-center gap-1.5 px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg cursor-pointer"
+                          className="flex cursor-pointer items-center gap-1 rounded-xl bg-purple-600 p-2 text-xs font-bold text-white shadow-md transition-all hover:bg-purple-500 hover:shadow-lg 2xl:px-3"
                           title="Solicitar intercambio de horario por antigüedad"
                         >
                           <ArrowLeftRight size={14} />
-                          <span>Solicitar Cambio</span>
+                          <span className="hidden 2xl:inline">Solicitar Cambio</span>
                         </button>
                       )}
                       {!isAdmin && currentUser?.rol === 'DOCENTE' && h.docenteId === currentUser.id && (
-                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3.5 py-2 rounded-xl border border-emerald-500/20">
-                          Mi Asignación
+                        <span className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-2 py-1.5 text-center text-[9px] font-bold leading-tight text-emerald-600 2xl:px-3 dark:text-emerald-400">
+                          <span className="hidden 2xl:inline">Mi Asignación</span>
+                          <span className="2xl:hidden">Mío</span>
                         </span>
                       )}
                     </div>

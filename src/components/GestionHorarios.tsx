@@ -1,23 +1,12 @@
 import React, { useState } from 'react';
 import { trpc } from '../utils/trpc';
-import { Wand2, Trash2, Plus, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Wand2, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getSemestresDinamicos } from '../utils/semestre';
 
 interface GestionHorariosProps {
   onSuccess: () => void;
 }
-
-const getSemestresDinamicos = (): string[] => {
-  const currentYear = new Date().getFullYear();
-  return [
-    `${currentYear - 1}-I`,
-    `${currentYear - 1}-II`,
-    `${currentYear}-I`,
-    `${currentYear}-II`,
-    `${currentYear + 1}-I`,
-    `${currentYear + 1}-II`,
-  ];
-};
 
 const SEMESTRES = getSemestresDinamicos();
 

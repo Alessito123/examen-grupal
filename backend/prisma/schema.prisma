@@ -1,6 +1,5 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["clientExtensions"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -23,12 +22,13 @@ model Docente {
   dni               String?                 @unique
   fechaContrato     DateTime?
   fechaNombramiento DateTime?
-  codigoIBM         String?
-  condicion         Condicion               @default(NOMBRADO)
+  codigoIBM         String?                 @unique
+  condicion         Condicion               @default(ORDINARIO)
   dedicacion        Dedicacion              @default(TC_40H)
   departamento      String                  @default("Departamento de Ingeniería de Sistemas")
   escuela           String                  @default("Ingeniería de Sistemas")
   facultad          String                  @default("Ingeniería")
+  sedes             Sede[]                  @default([TRUJILLO])
   cargasNoLectivas  CargaNoLectiva[]
   disponibilidades  DisponibilidadDocente[]
   horarios          Horario[]
@@ -36,26 +36,48 @@ model Docente {
 }
 
 model Curso {
-  id                      Int       @id @default(autoincrement())
+  id                      Int              @id @default(autoincrement())
   nombre                  String
-  tipo                    TipoCurso @default(teoria)
+  tipo                    TipoCurso        @default(teoria)
   creditos                Int
   ciclo                   Int?
-  codigo                  String?
-  horasLaboratorio        Int       @default(0)
-  horasPractica           Int       @default(0)
-  horasTeoria             Int       @default(0)
-  tipoPlan                String    @default("S")
-  escuela                 String    @default("Ingenieria de Sistemas")
-  departamentoResponsable String    @default("INGENIERIA DE SISTEMAS")
-  planAnio                Int       @default(2018)
-  activo                  Boolean   @default(true)
+  codigo                  String?          @unique
+  horasLaboratorio        Int              @default(0)
+  horasPractica           Int              @default(0)
+  horasTeoria             Int              @default(0)
+  tipoPlan                String           @default("O")
+  departamentoResponsable String           @default("INGENIERIA DE SISTEMAS")
+  activo                  Boolean          @default(true)
+  nivelPlan               String           @default("01 C")
+  seccion                 String           @default("U")
+  cantidadAlumnos         Int              @default(1)
+  lugares                 String[]         @default([])
+  seDictaEnFilial         Boolean          @default(false)
+  mallaId                 Int?
+  malla                   MallaCurricular? @relation(fields: [mallaId], references: [id], onDelete: SetNull)
   horarios                Horario[]
-  docentes                Docente[] @relation("DocenteCursos")
+  docentes                Docente[]        @relation("DocenteCursos")
 
-  @@index([planAnio])
   @@index([ciclo])
   @@index([tipoPlan])
+  @@index([mallaId])
+}
+
+model MallaCurricular {
+  id           Int       @id @default(autoincrement())
+  anio         Int
+  anioFin      Int
+  nombre       String
+  facultad     String
+  departamento String
+  tipoPeriodo  TipoMalla @default(SEMESTRAL)
+  activo       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  cursos       Curso[]
+
+  @@index([anio])
+  @@index([anio, departamento])
 }
 
 model Aula {
@@ -137,15 +159,17 @@ model CargaNoLectiva {
 }
 
 model SemestreAcademico {
-  id          Int      @id @default(autoincrement())
-  codigo      String   @unique
+  id          Int                  @id @default(autoincrement())
+  codigo      String               @unique
   anio        Int
   ciclo       String
-  fechaInicio DateTime @db.Date
-  fechaFin    DateTime @db.Date
-  activo      Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  fechaInicio DateTime             @db.Date
+  fechaFin    DateTime             @db.Date
+  activo      Boolean              @default(false)
+  tipoPeriodo TipoPeriodoAcademico @default(SEMESTRAL)
+  facultad    String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   @@index([activo])
   @@index([anio, ciclo])
@@ -156,24 +180,52 @@ enum Categoria {
   asociado
   auxiliar
   jefe_practica
-  profesor
-  alumno
+  tipo_a1
+  tipo_a2
+  tipo_a3
+  tipo_b1
+  tipo_b2
+  tipo_b3
+  cesante
+  experto
+  emerito
+  invitado_especial
 }
 
 enum Condicion {
-  NOMBRADO
+  ORDINARIO
+  EXTRAORDINARIO
   CONTRATADO
 }
 
 enum Dedicacion {
   TC_40H
   DE_EXCLUSIVA
+  DOCENTE_INVESTIGADOR
   TP_20H
-  TP
+  TP_4H
   TP_8H
   TP_10H
   TP_12H
   TP_16H
+}
+
+enum Sede {
+  TRUJILLO
+  VALLE_JEQUETEPEQUE
+  HUAMACHUCO
+  SANTIAGO_DE_CHUCO
+}
+
+enum TipoPeriodoAcademico {
+  SEMESTRAL
+  ANUAL_MEDICINA
+  NIVELACION
+}
+
+enum TipoMalla {
+  SEMESTRAL
+  ANUAL
 }
 
 enum Rol {
@@ -184,6 +236,7 @@ enum Rol {
 enum TipoCurso {
   teoria
   laboratorio
+  ambos
 }
 
 enum TipoActividad {

@@ -1,33 +1,35 @@
 import { TRPCError } from '@trpc/server';
 import jwt from 'jsonwebtoken';
-import { ROLES } from '../config/constants';
+import { getJwtSecret } from '../config/env';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'cambiar_por_secreto';
+export type AuthenticatedUser = {
+  id: number;
+  rol: 'ADMIN' | 'DOCENTE';
+  nombre?: string;
+};
 
-export const authenticate = (token?: string) => {
+export const authenticate = (token?: string): AuthenticatedUser => {
   if (!token) {
     throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Token no proporcionado' });
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: number; rol: string };
-    return decoded;
-  } catch (err) {
-    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Token inválido o expirado' });
-  }
-};
+    const decoded = jwt.verify(token, getJwtSecret());
 
-// Middleware para tRPC
-export const authMiddleware = (requiredRole?: keyof typeof ROLES) => {
-  return ({ ctx, next }: any) => {
-    const token = ctx.req.headers.authorization?.split(' ')[1];
-    const user = authenticate(token);
-
-    if (requiredRole && user.rol !== requiredRole) {
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'No tiene permisos suficientes' });
+    if (
+      typeof decoded === 'string' ||
+      typeof decoded.id !== 'number' ||
+      (decoded.rol !== 'ADMIN' && decoded.rol !== 'DOCENTE')
+    ) {
+      throw new Error('Payload JWT inválido');
     }
 
-    ctx.user = user; // agregar usuario al contexto
-    return next({ ctx });
-  };
+    return {
+      id: decoded.id,
+      rol: decoded.rol,
+      nombre: typeof decoded.nombre === 'string' ? decoded.nombre : undefined,
+    };
+  } catch {
+    throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Token inválido o expirado' });
+  }
 };

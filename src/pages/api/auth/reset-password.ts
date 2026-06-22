@@ -1,27 +1,35 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import prisma from '../../../../backend/prisma/client';
 import bcrypt from 'bcryptjs';
+import prisma from '../../../../backend/prisma/client';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  res.setHeader('Cache-Control', 'no-store');
 
   const { token, newPassword } = req.body;
-
-  if (!token || !newPassword) {
+  if (typeof token !== 'string' || typeof newPassword !== 'string') {
     return res.status(400).json({ message: 'Token y nueva contraseña son requeridos' });
+  }
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({
+      message: 'La contraseña debe tener al menos 8 caracteres',
+    });
   }
 
   const user = await prisma.docente.findUnique({
     where: { resetToken: token },
   });
 
-  if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+  if (!user?.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
     return res.status(400).json({ message: 'Token inválido o expirado' });
   }
 
-  // Hashear nueva contraseña
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
-
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
   await prisma.docente.update({
     where: { id: user.id },
     data: {

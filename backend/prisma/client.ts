@@ -9,7 +9,10 @@ declare global {
 const basePrisma =
   global.prisma ||
   new PrismaClient({
-    log: ['query', 'warn', 'error'], // Opcional: logs de consultas, advertencias y errores
+    log:
+      process.env.PRISMA_LOG_QUERIES === 'true'
+        ? ['query', 'warn', 'error']
+        : ['warn', 'error'],
   });
 
 if (process.env.NODE_ENV !== 'production') {

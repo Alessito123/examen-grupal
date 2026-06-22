@@ -1,5 +1,6 @@
 import React, { ReactNode } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import { useAuth } from '../hooks/useAuth';
 import { 
@@ -26,8 +27,13 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSearch } from '../contexts/SearchContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { trpc } from '../utils/trpc';
-import CustomCursor from '../components/CustomCursor';
-import ChatbotWidget from '../components/ChatbotWidget';
+
+const CustomCursor = dynamic(() => import('../components/CustomCursor'), {
+  ssr: false,
+});
+const ChatbotWidget = dynamic(() => import('../components/ChatbotWidget'), {
+  ssr: false,
+});
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -49,7 +55,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
     user ? { docenteId: user.id, rol: user.rol } : undefined,
     {
       enabled: !!user,
-      refetchInterval: 4000,
+      refetchInterval: 30_000,
+      refetchIntervalInBackground: false,
     }
   );
 
@@ -96,7 +103,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const allNavItems = [
     { label: 'Resumen', href: '/dashboard', icon: <LayoutDashboard size={20} />, roles: ['ADMIN', 'DOCENTE'] },
     { label: 'Creación de semestre', href: '/semestres', icon: <CalendarRange size={20} />, roles: ['ADMIN'] },
-    { label: 'Plan de estudios', href: '/cursos', icon: <BookOpen size={20} />, roles: ['ADMIN'] },
+    { label: 'Creación de malla curricular', href: '/cursos', icon: <BookOpen size={20} />, roles: ['ADMIN'] },
     { label: 'Docentes', href: '/docentes', icon: <Users size={20} />, roles: ['ADMIN'] },
     { label: 'Aulas', href: '/aulas', icon: <School size={20} />, roles: ['ADMIN'] },
     { label: 'Horarios', href: '/horarios', icon: <Calendar size={20} />, roles: ['ADMIN', 'DOCENTE'] },
@@ -182,30 +189,31 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               <Menu size={24} />
             </button>
             
-            <div className="hidden md:flex items-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full px-4 py-2 w-96 gap-3 focus-within:border-purple-500 transition-all relative">
-              <Search size={16} className="text-gray-500" />
-              <input 
-                type="text" 
-                placeholder="Buscar recursos (docentes, cursos, aulas)..." 
-                className="bg-transparent border-none p-0 text-sm focus:ring-0 w-full placeholder:text-gray-400 dark:placeholder:text-gray-600 text-gray-900 dark:text-white"
-                value={globalSearchTerm}
-                onChange={(e) => setGlobalSearchTerm(e.target.value)}
-              />
+            {user?.rol === 'ADMIN' && (
+              <div className="hidden md:flex items-center bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-full px-4 py-2 w-96 gap-3 focus-within:border-purple-500 transition-all relative">
+                <Search size={16} className="text-gray-500" />
+                <input
+                  type="text"
+                  placeholder="Buscar docentes, cursos o aulas..."
+                  className="bg-transparent border-none p-0 text-sm focus:ring-0 w-full placeholder:text-gray-400 dark:placeholder:text-gray-600 text-gray-900 dark:text-white"
+                  value={globalSearchTerm}
+                  onChange={(e) => setGlobalSearchTerm(e.target.value)}
+                />
 
-              {/* Global Search Results Popover */}
-              <AnimatePresence>
-                {globalSearchTerm.length > 0 && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
-                    className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#0f0f1a] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] max-h-[400px] overflow-y-auto backdrop-blur-xl"
-                  >
-                    <SearchResults term={globalSearchTerm} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                <AnimatePresence>
+                  {globalSearchTerm.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-[#0f0f1a] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] max-h-[400px] overflow-y-auto backdrop-blur-xl"
+                    >
+                      <SearchResults term={globalSearchTerm} />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4">

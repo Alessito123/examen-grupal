@@ -1,26 +1,33 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import jwt from 'jsonwebtoken';
+import { authenticate } from '../../../../backend/middleware/auth';
 import prisma from '../../../../backend/prisma/client';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  res.setHeader('Cache-Control', 'no-store');
+
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'No autorizado' });
   }
 
-  const token = authHeader.split(' ')[1];
-
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretkey') as any;
+    const decoded = authenticate(authHeader.slice('Bearer '.length));
     const user = await prisma.docente.findUnique({
       where: { id: decoded.id },
       select: { id: true, nombre: true, rol: true, email: true, antiguedad: true },
     });
 
-    if (!user) return res.status(401).json({ message: 'Usuario no encontrado' });
+    if (!user) {
+      return res.status(401).json({ message: 'Usuario no encontrado' });
+    }
 
     return res.status(200).json(user);
-  } catch (err) {
+  } catch {
     return res.status(401).json({ message: 'Token inválido' });
   }
 }

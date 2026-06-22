@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, User, Mail, Shield, Award, Calendar, Search, Lock, Unlock, Key, AlertCircle, CheckCircle2, BookOpen, School } from 'lucide-react';
+import { X, User, Mail, Shield, Award, Calendar, Search, Lock, Unlock, Key, AlertCircle, CheckCircle2, BookOpen, School, MapPin } from 'lucide-react';
 import { trpc } from '../utils/trpc';
+import {
+  CONDICIONES_DOCENTE,
+  FACULTADES_DEPARTAMENTOS,
+  INSTITUTIONAL_EMAIL_REGEX,
+  REGIMEN_POR_CATEGORIA_CONTRATADA,
+  SEDES,
+  getCategoriaOptions,
+  getDepartamentoOptions,
+  getRegimenOptions,
+} from '../../shared/academic';
 
 interface ModalNuevoDocenteProps {
   isOpen: boolean;
@@ -17,7 +27,7 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
     email: string;
     password: string;
     categoria: string;
-    condicion: 'NOMBRADO' | 'CONTRATADO';
+    condicion: 'ORDINARIO' | 'EXTRAORDINARIO' | 'CONTRATADO';
     dedicacion: string;
     codigoIBM: string;
     fechaNombramiento: string | null;
@@ -26,21 +36,23 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
     facultad: string;
     departamento: string;
     escuela: string;
+    sedes: Array<'TRUJILLO' | 'VALLE_JEQUETEPEQUE' | 'HUAMACHUCO' | 'SANTIAGO_DE_CHUCO'>;
   }>({
     dni: '',
     nombre: '',
     email: '',
     password: '',
     categoria: 'auxiliar',
-    condicion: 'NOMBRADO',
+    condicion: 'ORDINARIO',
     dedicacion: 'TC_40H',
     codigoIBM: '',
     fechaNombramiento: null,
     fechaContrato: null,
     rol: 'DOCENTE',
-    facultad: 'Ingeniería',
-    departamento: 'Departamento de Ingeniería de Sistemas',
-    escuela: 'Ingeniería de Sistemas'
+    facultad: 'Ingenieria',
+    departamento: 'Ingenieria de Sistemas',
+    escuela: 'Ingenieria de Sistemas',
+    sedes: ['TRUJILLO'],
   });
 
   const [isDniReadOnly, setIsDniReadOnly] = useState(false);
@@ -53,6 +65,9 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const { data: allCursos } = trpc.cursos.getAll.useQuery(undefined, { enabled: isOpen });
+  const categoriaOptions = getCategoriaOptions(formData.condicion);
+  const regimenOptions = getRegimenOptions(formData.condicion, formData.categoria);
+  const departamentoOptions = getDepartamentoOptions(formData.facultad);
 
   const utils = trpc.useContext();
 
@@ -64,22 +79,24 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
   React.useEffect(() => {
     if (docenteId && docenteQuery.data && isOpen) {
       const d = docenteQuery.data as any;
-      const categoria = d.categoria === 'contratado' ? 'profesor' : d.categoria;
+      const condicion = d.condicion === 'NOMBRADO' ? 'ORDINARIO' : (d.condicion || 'ORDINARIO');
+      const categoria = d.categoria === 'profesor' || d.categoria === 'alumno' ? 'auxiliar' : d.categoria;
       setFormData({
         dni: d.dni || '',
         nombre: d.nombre,
         email: d.email || '',
         password: '',
         categoria,
-        condicion: d.categoria === 'contratado' ? 'CONTRATADO' : (d.condicion || 'NOMBRADO'),
+        condicion,
         dedicacion: d.dedicacion || 'TC_40H',
         codigoIBM: d.codigoIBM || '',
         fechaNombramiento: d.fechaNombramiento ? new Date(d.fechaNombramiento).toISOString().slice(0, 10) : null,
         fechaContrato: d.fechaContrato ? new Date(d.fechaContrato).toISOString().slice(0, 10) : null,
         rol: d.rol,
-        facultad: d.facultad || 'Ingeniería',
-        departamento: d.departamento || 'Departamento de Ingeniería de Sistemas',
-        escuela: d.escuela || 'Ingeniería de Sistemas'
+        facultad: d.facultad || 'Ingenieria',
+        departamento: (d.departamento || 'Ingenieria de Sistemas').replace(/^Departamento de /, ''),
+        escuela: d.escuela || 'Ingenieria de Sistemas',
+        sedes: Array.isArray(d.sedes) && d.sedes.length > 0 ? d.sedes : ['TRUJILLO'],
       });
       if (d.cursos) {
         setSelectedCursoIds(d.cursos.map((c: any) => c.id));
@@ -95,6 +112,48 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
     },
     { enabled: formData.dni.length === 8 }
   );
+  const checkEmailQuery = trpc.docentes.checkEmail.useQuery(
+    {
+      email: formData.email.trim().toLowerCase(),
+      excludeId: docenteId || undefined,
+    },
+    {
+      enabled: INSTITUTIONAL_EMAIL_REGEX.test(formData.email),
+      staleTime: 0,
+      retry: false,
+      refetchOnMount: 'always',
+    },
+  );
+  const checkCodigoIBMQuery = trpc.docentes.checkCodigoIBM.useQuery(
+    {
+      codigoIBM: formData.codigoIBM,
+      excludeId: docenteId || undefined,
+    },
+    {
+      enabled: formData.codigoIBM.trim().length > 0,
+    },
+  );
+  const normalizedEmail = formData.email.trim().toLowerCase();
+  const requiresInstitutionalEmail = !docenteId || (docenteQuery.data as any)?.rol !== 'ADMIN';
+  const emailFormatError = normalizedEmail.length > 0
+    && requiresInstitutionalEmail
+    && !INSTITUTIONAL_EMAIL_REGEX.test(normalizedEmail)
+      ? 'Usa el formato apellido@unitru.edu.pe.'
+      : null;
+  const emailDuplicateError = checkEmailQuery.data?.exists
+    ? 'El correo institucional ya está registrado.'
+    : null;
+  const emailError = emailFormatError || emailDuplicateError;
+  const isCheckingEmail = INSTITUTIONAL_EMAIL_REGEX.test(normalizedEmail)
+    && (checkEmailQuery.isLoading || checkEmailQuery.isFetching);
+  const isEmailAvailable = INSTITUTIONAL_EMAIL_REGEX.test(normalizedEmail)
+    && checkEmailQuery.isSuccess
+    && !checkEmailQuery.data?.exists;
+  const emailValidationFailed = INSTITUTIONAL_EMAIL_REGEX.test(normalizedEmail)
+    && checkEmailQuery.isError;
+  const codigoIBMError = checkCodigoIBMQuery.data?.exists
+    ? 'El código IBM ya está registrado.'
+    : null;
 
   React.useEffect(() => {
     if (checkDniQuery.data?.exists) {
@@ -137,15 +196,16 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
       email: '',
       password: '',
       categoria: 'auxiliar',
-      condicion: 'NOMBRADO',
+      condicion: 'ORDINARIO',
       dedicacion: 'TC_40H',
       codigoIBM: '',
       fechaNombramiento: null,
       fechaContrato: null,
       rol: 'DOCENTE',
-      facultad: 'Ingeniería',
-      departamento: 'Departamento de Ingeniería de Sistemas',
-      escuela: 'Ingeniería de Sistemas'
+      facultad: 'Ingenieria',
+      departamento: 'Ingenieria de Sistemas',
+      escuela: 'Ingenieria de Sistemas',
+      sedes: ['TRUJILLO'],
     });
     setSelectedCursoIds([]);
     setCursoSearch('');
@@ -200,6 +260,7 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
       facultad: formData.facultad,
       departamento: formData.departamento,
       escuela: formData.escuela,
+      sedes: formData.sedes,
       cursos: selectedCursoIds
     };
 
@@ -226,6 +287,35 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
       `ciclo ${curso.ciclo}`.includes(query)
     );
   });
+
+  const handleCondicionChange = (condicion: 'ORDINARIO' | 'EXTRAORDINARIO' | 'CONTRATADO') => {
+    const firstCategoria = getCategoriaOptions(condicion)[0]?.value || 'auxiliar';
+    const firstRegimen = getRegimenOptions(condicion, firstCategoria)[0]?.value || 'TC_40H';
+    setFormData((current) => ({
+      ...current,
+      condicion,
+      categoria: firstCategoria,
+      dedicacion: firstRegimen,
+      fechaContrato: condicion === 'CONTRATADO' ? current.fechaContrato : null,
+      fechaNombramiento: condicion === 'ORDINARIO' ? current.fechaNombramiento : null,
+    }));
+  };
+
+  const handleCategoriaChange = (categoria: string) => {
+    const forcedRegimen = formData.condicion === 'CONTRATADO'
+      ? REGIMEN_POR_CATEGORIA_CONTRATADA[categoria]
+      : undefined;
+    const allowedRegimenes = getRegimenOptions(formData.condicion, categoria);
+    setFormData((current) => ({
+      ...current,
+      categoria,
+      dedicacion: forcedRegimen || (
+        allowedRegimenes.some((option) => option.value === current.dedicacion)
+          ? current.dedicacion
+          : allowedRegimenes[0]?.value || 'TC_40H'
+      ),
+    }));
+  };
 
   if (!isOpen) return null;
 
@@ -321,10 +411,40 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
                 type="email" 
                 required
                 value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                placeholder="docente@universidad.edu"
-                className="w-full"
+                pattern={(docenteQuery.data as any)?.rol === 'ADMIN' ? undefined : INSTITUTIONAL_EMAIL_REGEX.source}
+                onChange={(e) => setFormData({...formData, email: e.target.value.toLowerCase()})}
+                placeholder="apellido@unitru.edu.pe"
+                aria-invalid={!!emailError || emailValidationFailed}
+                className={`w-full ${
+                  emailError || emailValidationFailed
+                    ? 'border-red-500 focus:border-red-500'
+                    : isEmailAvailable
+                      ? 'border-green-500 focus:border-green-500'
+                      : ''
+                }`}
               />
+              {emailError && (
+                <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-red-500">
+                  <AlertCircle size={10} /> {emailError}
+                </p>
+              )}
+              {!emailError && isCheckingEmail && (
+                <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-500">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+                  Verificando disponibilidad...
+                </p>
+              )}
+              {!emailError && !isCheckingEmail && isEmailAvailable && (
+                <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-green-600">
+                  <CheckCircle2 size={10} /> Correo disponible
+                </p>
+              )}
+              {!emailError && emailValidationFailed && (
+                <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-red-500">
+                  <AlertCircle size={10} /> No se pudo verificar el correo. Intenta nuevamente.
+                </p>
+              )}
+              <p className="text-[10px] text-gray-400">Correo institucional requerido para la constancia de verificacion.</p>
             </div>
 
             <div className="space-y-2">
@@ -350,10 +470,15 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
               <input 
                 type="text" 
                 value={formData.codigoIBM}
-                onChange={(e) => setFormData({...formData, codigoIBM: e.target.value})}
+                onChange={(e) => setFormData({...formData, codigoIBM: e.target.value.toUpperCase().trim()})}
                 placeholder="Ej. 4247"
-                className="w-full"
+                className={`w-full ${codigoIBMError ? 'border-red-500 focus:border-red-500' : ''}`}
               />
+              {codigoIBMError && (
+                <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-red-500">
+                  <AlertCircle size={10} /> {codigoIBMError}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -362,20 +487,16 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
               </label>
               <select 
                 value={formData.condicion}
-                onChange={(e) => {
-                  const condicion = e.target.value as 'NOMBRADO' | 'CONTRATADO';
-                  setFormData({
-                    ...formData,
-                    condicion,
-                    fechaContrato: condicion === 'NOMBRADO' ? null : formData.fechaContrato,
-                    fechaNombramiento: condicion === 'CONTRATADO' ? null : formData.fechaNombramiento,
-                  });
-                }}
+                onChange={(e) => handleCondicionChange(e.target.value as any)}
                 className="w-full"
               >
-                <option value="NOMBRADO">Nombrado</option>
-                <option value="CONTRATADO">Contratado</option>
+                {CONDICIONES_DOCENTE.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
+              {formData.condicion === 'EXTRAORDINARIO' && (
+                <p className="text-[10px] text-gray-400">Para cesantes, expertos, emeritos o invitados especiales.</p>
+              )}
             </div>
           </div>
 
@@ -386,41 +507,34 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
               </label>
               <select 
                 value={formData.categoria}
-                onChange={(e) => setFormData({...formData, categoria: e.target.value})}
+                onChange={(e) => handleCategoriaChange(e.target.value)}
                 className="w-full"
               >
-                <option value="principal">Principal</option>
-                <option value="asociado">Asociado</option>
-                <option value="auxiliar">Auxiliar</option>
-                <option value="jefe_practica">Jefe de Práctica</option>
-                <option value="profesor">Profesor</option>
-                <option value="alumno">Alumno</option>
+                {categoriaOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </div>
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                <Shield size="12" /> Dedicación
+                <Shield size="12" /> Regimen
               </label>
               <select 
                 value={formData.dedicacion}
                 onChange={(e) => setFormData({...formData, dedicacion: e.target.value})}
+                disabled={formData.condicion === 'CONTRATADO' && !!REGIMEN_POR_CATEGORIA_CONTRATADA[formData.categoria]}
                 className="w-full"
               >
-                <option value="DE_EXCLUSIVA">Dedicación Exclusiva</option>
-                <option value="TP">Tiempo Parcial</option>
-                <option value="TP_8H">Tiempo Parcial 8H</option>
-                <option value="TP_10H">Tiempo Parcial 10H</option>
-                <option value="TP_12H">Tiempo Parcial 12H</option>
-                <option value="TP_16H">Tiempo Parcial 16H</option>
-                <option value="TP_20H">Tiempo Parcial 20H</option>
-                <option value="TC_40H">Tiempo Completo 40H</option>
+                {regimenOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </div>
           </div>
 
           <div className="space-y-5">
-            {formData.condicion === 'NOMBRADO' ? (
+            {formData.condicion === 'ORDINARIO' ? (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                   <Calendar size={12} /> Fecha de Nombramiento
@@ -433,7 +547,7 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
                   className="w-full"
                 />
               </div>
-            ) : (
+            ) : formData.condicion === 'CONTRATADO' ? (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                   <Calendar size={12} /> Fecha de Contrato
@@ -446,7 +560,7 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
                   className="w-full"
                 />
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="grid grid-cols-1 gap-4">
@@ -454,26 +568,37 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                 <School size={12} /> Facultad
               </label>
-              <input 
-                type="text" 
+              <select
                 value={formData.facultad}
-                onChange={(e) => setFormData({...formData, facultad: e.target.value})}
-                placeholder="Ej. Ingeniería"
+                onChange={(e) => {
+                  const facultad = e.target.value;
+                  setFormData((current) => ({
+                    ...current,
+                    facultad,
+                    departamento: getDepartamentoOptions(facultad)[0] || '',
+                  }));
+                }}
                 className="w-full"
-              />
+              >
+                {Object.keys(FACULTADES_DEPARTAMENTOS).map((facultad) => (
+                  <option key={facultad} value={facultad}>{facultad}</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                 <School size={12} /> Departamento
               </label>
-              <input 
-                type="text" 
+              <select
                 value={formData.departamento}
                 onChange={(e) => setFormData({...formData, departamento: e.target.value})}
-                placeholder="Ej. Departamento de Ingeniería de Sistemas"
                 className="w-full"
-              />
+              >
+                {departamentoOptions.map((departamento) => (
+                  <option key={departamento} value={departamento}>{departamento}</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">
@@ -487,6 +612,44 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
                 placeholder="Ej. Ingeniería de Sistemas"
                 className="w-full"
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                <MapPin size={12} /> Sedes
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SEDES.map((sede) => (
+                  <label
+                    key={sede.value}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm font-semibold transition-colors ${
+                      formData.sedes.includes(sede.value)
+                        ? 'border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300'
+                        : 'border-gray-200 text-gray-600 hover:border-purple-300 dark:border-white/10 dark:text-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.sedes.includes(sede.value)}
+                      onChange={() => {
+                        setFormData((current) => {
+                          const selected = current.sedes.includes(sede.value);
+                          if (selected && current.sedes.length === 1) return current;
+                          return {
+                            ...current,
+                            sedes: selected
+                              ? current.sedes.filter((item) => item !== sede.value)
+                              : [...current.sedes, sede.value],
+                          };
+                        });
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-purple-600"
+                    />
+                    {sede.label}
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-400">Puedes seleccionar una o varias sedes. Debe permanecer al menos una activa.</p>
             </div>
           </div>
 
@@ -511,7 +674,9 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
                         exit={{ opacity: 0, scale: 0.8 }}
                         className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-tr from-purple-600/10 to-blue-600/10 dark:from-purple-500/20 dark:to-blue-500/20 border border-purple-500/20 text-purple-600 dark:text-purple-400 text-xs font-bold rounded-full"
                       >
-                        <span className="max-w-[180px] truncate">{curso.nombre} ({curso.tipo === 'teoria' ? 'T' : 'L'})</span>
+                        <span className="max-w-[180px] truncate">
+                          {curso.nombre} ({curso.tipo === 'ambos' ? 'T/P + L' : curso.tipo === 'teoria' ? 'T/P' : 'L'})
+                        </span>
                         <button
                           type="button"
                           onClick={() => setSelectedCursoIds(selectedCursoIds.filter(cid => cid !== id))}
@@ -574,7 +739,7 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
                             <div className="flex flex-col">
                               <span className="font-semibold">{curso.nombre}</span>
                               <span className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
-                                Ciclo {curso.ciclo || 1} • {curso.codigo || 'S/C'} • {curso.tipo === 'teoria' ? 'Teoría' : 'Laboratorio'}
+                                Ciclo {curso.ciclo || 1} • {curso.codigo || 'S/C'} • {curso.tipo === 'ambos' ? 'Aula y laboratorio' : curso.tipo === 'teoria' ? 'Teoría / práctica' : 'Laboratorio'}
                               </span>
                             </div>
                             {selected && <CheckCircle2 size={16} className="text-purple-600 dark:text-purple-400" />}
@@ -602,7 +767,16 @@ const ModalNuevoDocente: React.FC<ModalNuevoDocenteProps> = ({ isOpen, onClose, 
             </button>
             <button 
               type="submit"
-              disabled={createMutation.isPending || updateMutation.isPending || !!dniError}
+              disabled={
+                createMutation.isPending
+                || updateMutation.isPending
+                || !!dniError
+                || !!emailError
+                || !!codigoIBMError
+                || isCheckingEmail
+                || emailValidationFailed
+                || (requiresInstitutionalEmail && !isEmailAvailable)
+              }
               className="flex-[2] py-4 rounded-2xl bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-600/20 transition-all"
             >
               {docenteId ? (

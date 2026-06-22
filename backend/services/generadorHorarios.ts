@@ -1,18 +1,27 @@
-import { Categoria, TipoCurso, Dia } from '@prisma/client';
+import { Categoria, Dia } from '@prisma/client';
 import prisma from '../prisma/client';
 import { BLOQUES_HORARIOS, hasTimeOverlap, toMinutes } from '../config/schedule';
+import { SCHEDULE_DAYS } from '../../shared/schedule';
 
 // Prioridad de categorías (Menor número = Mayor prioridad)
 const PRIORIDAD_CATEGORIA: Record<Categoria, number> = {
   principal: 1,
   asociado: 2,
   auxiliar: 3,
-  jefe_practica: 4,
-  profesor: 5,
-  alumno: 6,
+  emerito: 4,
+  experto: 5,
+  invitado_especial: 6,
+  cesante: 7,
+  tipo_a1: 8,
+  tipo_b1: 9,
+  tipo_a2: 10,
+  tipo_b2: 11,
+  tipo_a3: 12,
+  tipo_b3: 13,
+  jefe_practica: 14,
 };
 
-const DIAS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'] as Dia[];
+const DIAS = [...SCHEDULE_DAYS] as Dia[];
 function shuffleArray<T>(array: T[]): T[] {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -23,8 +32,6 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 export async function generarHorariosAutomaticamente(semestre: string) {
-  console.log(`--- Iniciando Algoritmo de Generación Automática para el Semestre ${semestre} ---`);
-
   // 1. Limpiar horarios existentes únicamente para el semestre seleccionado
   await prisma.horario.deleteMany({
     where: { semestre }
@@ -42,8 +49,13 @@ export async function generarHorariosAutomaticamente(semestre: string) {
   // 3. Obtener Cursos y Aulas filtrados por los ciclos correspondientes al semestre
   // Semestres I -> Ciclos Impares (1, 3, 5, 7, 9)
   // Semestres II -> Ciclos Pares (2, 4, 6, 8, 10)
-  const isOddSemester = semestre.endsWith('-I') || semestre.endsWith(' I') || semestre === 'I' || semestre.endsWith('I');
-  const targetCiclos = isOddSemester ? [1, 3, 5, 7, 9] : [2, 4, 6, 8, 10];
+  const isOddSemester = semestre.endsWith('-I');
+  const isEvenSemester = semestre.endsWith('-II');
+  const targetCiclos = isOddSemester
+    ? [1, 3, 5, 7, 9, 11]
+    : isEvenSemester
+      ? [2, 4, 6, 8, 10, 12]
+      : Array.from({ length: 12 }, (_, index) => index + 1);
 
   const cursosRaw = await prisma.curso.findMany({
     where: {
@@ -54,7 +66,28 @@ export async function generarHorariosAutomaticamente(semestre: string) {
   });
   const aulasRaw = await prisma.aula.findMany();
 
-  const cursos = shuffleArray(cursosRaw);
+  const sesionesCurso = cursosRaw.flatMap((curso) => {
+    const sesiones: Array<typeof curso & { tipoSesion: 'teoria' | 'laboratorio' }> = [];
+    const hasAula = (curso.horasTeoria + curso.horasPractica) > 0;
+    const hasLaboratorio = curso.horasLaboratorio > 0;
+
+    if ((curso.tipo === 'teoria' || curso.tipo === 'ambos') && hasAula) {
+      sesiones.push({ ...curso, tipoSesion: 'teoria' });
+    }
+    if ((curso.tipo === 'laboratorio' || curso.tipo === 'ambos') && hasLaboratorio) {
+      sesiones.push({ ...curso, tipoSesion: 'laboratorio' });
+    }
+
+    if (sesiones.length === 0) {
+      sesiones.push({
+        ...curso,
+        tipoSesion: curso.tipo === 'laboratorio' ? 'laboratorio' : 'teoria',
+      });
+    }
+    return sesiones;
+  });
+
+  const cursos = shuffleArray(sesionesCurso);
   const aulas = shuffleArray(aulasRaw);
   const diasOrdenados = shuffleArray(DIAS);
   const bloquesOrdenados = shuffleArray(BLOQUES_HORARIOS);
@@ -164,7 +197,7 @@ export async function generarHorariosAutomaticamente(semestre: string) {
 
           // Buscar aula disponible del tipo correcto
           const aulaDisponible = aulas.find(a => {
-            if (a.tipo !== curso.tipo) return false;
+            if (a.tipo !== curso.tipoSesion) return false;
             const aulaKey = `${a.id}-${dia}`;
             return !hasOcupacionOverlap(ocupacionAula, aulaKey, bloqueInicioMin, bloqueFinMin);
           });
@@ -182,7 +215,7 @@ export async function generarHorariosAutomaticamente(semestre: string) {
                 dia: dia,
                 horaInicio,
                 horaFin,
-                tipoCurso: curso.tipo,
+                tipoCurso: curso.tipoSesion,
                 semestre: semestre
               } as any
             });

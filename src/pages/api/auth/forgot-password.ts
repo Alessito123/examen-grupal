@@ -1,40 +1,42 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import prisma from '../../../../backend/prisma/client';
 import crypto from 'crypto';
+import prisma from '../../../../backend/prisma/client';
+
+const genericMessage =
+  'Si el correo existe, se ha generado un token de recuperación';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  res.setHeader('Cache-Control', 'no-store');
 
   const { email } = req.body;
-
-  if (!email) {
+  if (typeof email !== 'string' || !email.trim()) {
     return res.status(400).json({ message: 'Email es requerido' });
   }
 
-  const user = await prisma.docente.findUnique({ where: { email } });
+  const user = await prisma.docente.findUnique({
+    where: { email: email.trim().toLowerCase() },
+  });
 
   if (!user) {
-    // Por seguridad, no revelamos si el email existe
-    return res.status(200).json({ message: 'Si el correo existe, se ha enviado un token de recuperación' });
+    return res.status(200).json({ message: genericMessage });
   }
 
-  // Generar token aleatorio
   const resetToken = crypto.randomBytes(32).toString('hex');
-  const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hora desde ahora
-
   await prisma.docente.update({
     where: { id: user.id },
     data: {
       resetToken,
-      resetTokenExpiry,
+      resetTokenExpiry: new Date(Date.now() + 60 * 60 * 1000),
     },
   });
 
-  // En un proyecto real, aquí enviarías el email con el token
-  console.log(`[AUTH] Token de recuperación para ${email}: ${resetToken}`);
-
-  return res.status(200).json({ 
-    message: 'Si el correo existe, se ha enviado un token de recuperación',
-    debugToken: resetToken // Solo para desarrollo/demo
+  return res.status(200).json({
+    message: genericMessage,
+    ...(process.env.NODE_ENV === 'development' ? { debugToken: resetToken } : {}),
   });
 }

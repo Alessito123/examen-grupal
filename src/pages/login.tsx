@@ -1,16 +1,31 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import gsap from 'gsap';
 import AuthLayout from '../layouts/AuthLayout';
 import { useAuth } from '../hooks/useAuth';
-import { Mail, Lock, ArrowRight, Loader2, Sparkles, AlertCircle } from 'lucide-react';
-import LoginBackground from '../components/LoginBackground';
-import CustomCursor from '../components/CustomCursor';
+import { Mail, Lock, ArrowRight, Loader2, Sparkles, AlertCircle, Eye, EyeOff } from 'lucide-react';
+
+const LoginBackgroundFallback = () => (
+  <div className="absolute inset-0 z-0 overflow-hidden bg-gradient-to-br from-[#06060f] via-[#0d0722] to-[#040817]">
+    <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800d_1px,transparent_1px),linear-gradient(to_bottom,#8080800d_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_80%,transparent_100%)] opacity-40" />
+    <div className="absolute left-1/2 top-1/2 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-purple-600/10 blur-[110px]" />
+  </div>
+);
+
+const LoginBackground = dynamic(() => import('../components/LoginBackground'), {
+  ssr: false,
+  loading: LoginBackgroundFallback,
+});
+const CustomCursor = dynamic(() => import('../components/CustomCursor'), {
+  ssr: false,
+});
 
 const LoginPage: React.FC = () => {
   const { login, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorToast, setErrorToast] = useState<string | null>(null);
 
   const formRef = useRef<HTMLFormElement>(null);
@@ -19,7 +34,7 @@ const LoginPage: React.FC = () => {
   const submitButtonRef = useRef<HTMLButtonElement>(null);
 
   // Focus and Pulse effects using GSAP
-  const handleInputFocus = (inputRef: React.RefObject<HTMLInputElement>) => {
+  const handleInputFocus = (inputRef: React.RefObject<HTMLInputElement | null>) => {
     if (inputRef.current) {
       gsap.to(inputRef.current, {
         borderColor: '#a855f7',
@@ -31,7 +46,7 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  const handleInputBlur = (inputRef: React.RefObject<HTMLInputElement>) => {
+  const handleInputBlur = (inputRef: React.RefObject<HTMLInputElement | null>) => {
     if (inputRef.current) {
       gsap.to(inputRef.current, {
         borderColor: 'rgba(255, 255, 255, 0.1)',
@@ -172,16 +187,27 @@ const LoginPage: React.FC = () => {
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-purple-500 transition-colors" size={20} />
               <input
                 ref={passwordInputRef}
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onFocus={() => handleInputFocus(passwordInputRef)}
                 onBlur={() => handleInputBlur(passwordInputRef)}
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-gray-600 focus:outline-none transition-all"
+                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-12 text-white placeholder:text-gray-600 focus:outline-none transition-all"
                 disabled={loading}
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-500 transition-colors hover:text-purple-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={showPassword}
+                title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                disabled={loading}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </div>
           </div>
 

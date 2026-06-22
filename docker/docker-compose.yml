@@ -21,6 +21,7 @@ services:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true
       - DATABASE_URL=postgresql://postgres:1234@db:5432/sistema_horarios?schema=public
+      - DIRECT_URL=postgresql://postgres:1234@db:5432/sistema_horarios?schema=public
     volumes:
       - ../:/app
       - /app/node_modules

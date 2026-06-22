@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Clock, MapPin, User, BookOpen, FileSpreadsheet, Download, FileText, Eye } from 'lucide-react';
-import { jsPDF } from 'jspdf';
+import { Clock, MapPin, User, FileSpreadsheet, Download, Eye } from 'lucide-react';
 import ModalPDF from './ModalPDF';
 import { SCHEDULE_DAYS, SCHEDULE_END_HOUR, SCHEDULE_START_HOUR, SCHEDULE_TIME_MARKERS } from '../utils/scheduleConfig';
 import { trpc } from '../utils/trpc';
 import { getSemestreDateLabels } from '../utils/semestre';
+import { buildHorarioReportRows } from '../utils/horarioReport';
 
 const loadImage = (src: string): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
@@ -32,12 +32,24 @@ const hslToRgb = (h: number, s: number, l: number): [number, number, number] => 
 
 interface Horario {
   id: number;
+  cursoId?: number | null;
+  docenteId?: number | null;
   dia: string;
   horaInicio: string | Date;
   horaFin: string | Date;
   tipoCurso: string;
-  curso: { nombre: string; codigo: string | null };
-  docente: { nombre: string };
+  tipoActividad?: string | null;
+  curso: {
+    nombre: string;
+    codigo: string | null;
+    ciclo?: number | null;
+    horasTeoria?: number | null;
+    horasPractica?: number | null;
+    horasLaboratorio?: number | null;
+    departamentoResponsable?: string | null;
+    malla?: { departamento?: string | null } | null;
+  };
+  docente: { nombre: string; departamento?: string | null };
   aula: { nombre: string; ubicacion: string | null };
   grupo?: string | null;
 }
@@ -90,86 +102,12 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
     { codigo: selectedSemestre || '2026-I' },
     { enabled: !!selectedSemestre && /^\d{4}-(I|II)$/.test(selectedSemestre) }
   );
-  const semestreDateLabels = getSemestreDateLabels(semestreQuery.data as any);
+  const semestreDateLabels = getSemestreDateLabels(semestreQuery.data);
 
-  const summaryData = React.useMemo(() => {
-    const map = new Map<string, {
-      docente: string;
-      curso: string;
-      teoriaHours: number;
-      labHours: number;
-      totalHours: number;
-      grupos: Set<string>;
-    }>();
-
-    horarios.forEach(h => {
-      const key = `${h.docente.nombre}-${h.curso?.nombre || ''}`;
-      const dStart = new Date(h.horaInicio);
-      const dFin = new Date(h.horaFin);
-      const duration = Math.max(1, dFin.getUTCHours() - dStart.getUTCHours());
-
-      if (!map.has(key)) {
-        map.set(key, {
-          docente: h.docente.nombre,
-          curso: h.curso?.nombre || '',
-          teoriaHours: 0,
-          labHours: 0,
-          totalHours: 0,
-          grupos: new Set<string>()
-        });
-      }
-
-      const item = map.get(key)!;
-      if (h.tipoCurso.toLowerCase() === 'laboratorio') {
-        item.labHours += duration;
-      } else {
-        item.teoriaHours += duration;
-      }
-      item.totalHours += duration;
-      if (h.grupo) {
-        item.grupos.add(h.grupo);
-      }
-    });
-
-    return Array.from(map.values()).map((item, idx) => {
-      let T = 0;
-      let P = 0;
-      let L = 0;
-
-      if (item.labHours > 0) {
-        L = item.labHours;
-        if (item.teoriaHours > 0) {
-          T = Math.ceil(item.teoriaHours / 2);
-          P = Math.floor(item.teoriaHours / 2);
-        }
-      } else {
-        if (item.teoriaHours > 0) {
-          if (item.teoriaHours === 3) {
-            T = 1;
-            P = 2;
-          } else if (item.teoriaHours === 4) {
-            T = 2;
-            P = 2;
-          } else {
-            T = Math.ceil(item.teoriaHours / 2);
-            P = Math.floor(item.teoriaHours / 2);
-          }
-        }
-      }
-
-      return {
-        index: idx + 1,
-        docente: item.docente.toUpperCase(),
-        curso: item.curso.toUpperCase(),
-        T,
-        P,
-        L,
-        G: item.grupos.size || 1,
-        total: item.totalHours,
-        dpto: 'INGENIERÃA DE SISTEMAS'
-      };
-    });
-  }, [horarios]);
+  const summaryData = React.useMemo(
+    () => buildHorarioReportRows(horarios),
+    [horarios]
+  );
 
   const timeSlots = SCHEDULE_TIME_MARKERS;
 
@@ -296,23 +234,23 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       </head>
       <body>
         <h2 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 2px;">UNIVERSIDAD NACIONAL DE TRUJILLO</h2>
-        <h3 style="color: #6b21a8; font-family: 'Segoe UI', sans-serif; margin-top: 0; margin-bottom: 2px;">FACULTAD DE INGENIERÃA</h3>
-        <h4 style="color: #475569; font-family: 'Segoe UI', sans-serif; margin-top: 0; font-weight: normal; margin-bottom: 15px;">Escuela Profesional de IngenierÃ­a de Sistemas</h4>
+        <h3 style="color: #6b21a8; font-family: 'Segoe UI', sans-serif; margin-top: 0; margin-bottom: 2px;">FACULTAD DE INGENIERÍA</h3>
+        <h4 style="color: #475569; font-family: 'Segoe UI', sans-serif; margin-top: 0; font-weight: normal; margin-bottom: 15px;">Escuela Profesional de Ingeniería de Sistemas</h4>
         
         <!-- Metadata Info Table -->
         <table style="margin-bottom: 15px; border-collapse: collapse; font-family: 'Segoe UI', sans-serif; font-size: 9pt;">
           <tr>
             <td style="font-weight: bold; color: #475569; padding-right: 10px;">ESCUELA:</td>
-            <td style="color: #1e293b;">INGENIERÃA DE SISTEMAS</td>
+            <td style="color: #1e293b;">INGENIERÍA DE SISTEMAS</td>
             <td style="width: 40px;"></td>
             <td style="font-weight: bold; color: #475569; padding-right: 10px;">SEDE:</td>
             <td style="color: #1e293b;">VALLE JEQUETEPEQUE</td>
           </tr>
           <tr>
-            <td style="font-weight: bold; color: #475569; padding-right: 10px;">CICLO / SECCIÃ“N:</td>
-            <td style="color: #1e293b;">${selectedCiclo || 'TODOS'} - SECCIÃ“N A</td>
+            <td style="font-weight: bold; color: #475569; padding-right: 10px;">CICLO / SECCIÓN:</td>
+            <td style="color: #1e293b;">${selectedCiclo || 'TODOS'} - SECCIÓN A</td>
             <td></td>
-            <td style="font-weight: bold; color: #475569; padding-right: 10px;">SEMESTRE / AÃ‘O:</td>
+            <td style="font-weight: bold; color: #475569; padding-right: 10px;">SEMESTRE / AÑO:</td>
             <td style="color: #1e293b;">${selectedSemestre || 'TODOS'}</td>
           </tr>
           <tr>
@@ -324,19 +262,19 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           </tr>
         </table>
 
-        <!-- Summary Table (Tabla Resumen de DistribuciÃ³n de Horas) -->
-        <h3 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 10px; margin-top: 20px;">TABLA RESUMEN DE ASIGNACIÃ“N DOCENTE Y HORAS</h3>
+        <!-- Resumen real de asignación docente y horas de la malla curricular -->
+        <h3 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 10px; margin-top: 20px;">ASIGNACIÓN DOCENTE Y CARGA ACADÉMICA</h3>
         <table border="1" style="border-collapse: collapse; font-family: 'Segoe UI', sans-serif; margin-bottom: 30px;">
           <thead>
             <tr style="background-color: #0f4c81; color: white;">
-              <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 40px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">NÂ°</th>
+              <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 40px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">N°</th>
               <th style="font-weight: bold; text-align: left; font-size: 9.5pt; padding: 6px; width: 220px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">DOCENTE</th>
               <th style="font-weight: bold; text-align: left; font-size: 9.5pt; padding: 6px; width: 260px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">EXPERIENCIA CURRICULAR</th>
               <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 35px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">T</th>
               <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 35px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">P</th>
               <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 35px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">L</th>
               <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 35px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">G</th>
-              <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 65px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">HORAS</th>
+              <th style="font-weight: bold; text-align: center; font-size: 9.5pt; padding: 6px; width: 65px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">T. HORAS</th>
               <th style="font-weight: bold; text-align: left; font-size: 9.5pt; padding: 6px; width: 180px; background-color: #0f4c81; color: white; border: 1px solid #c2cfd6;">DPTO. ACAD.</th>
             </tr>
           </thead>
@@ -344,21 +282,21 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
             ${summaryData.map(row => `
               <tr>
                 <td style="text-align: center; font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #64748b;">${row.index}</td>
-                <td style="font-weight: bold; font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #1e293b;">${row.docente}</td>
-                <td style="font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #334155;">${row.curso}</td>
+                <td style="font-weight: bold; font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #1e293b;">${escapeHtml(row.docente)}</td>
+                <td style="font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #334155;">${escapeHtml(row.curso)}</td>
                 <td style="text-align: center; font-weight: bold; font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #2563eb;">${row.T}</td>
                 <td style="text-align: center; font-weight: bold; font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #9333ea;">${row.P}</td>
                 <td style="text-align: center; font-weight: bold; font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #d97706;">${row.L}</td>
                 <td style="text-align: center; font-size: 9pt; padding: 5px; border: 1px solid #c2cfd6; color: #475569;">${row.G}</td>
                 <td style="text-align: center; font-weight: bold; font-size: 9.5pt; padding: 5px; border: 1px solid #c2cfd6; color: #0f4c81; background-color: #f8fafc;">${row.total}</td>
-                <td style="font-size: 8.5pt; padding: 5px; border: 1px solid #c2cfd6; color: #64748b;">${row.dpto}</td>
+                <td style="font-size: 8.5pt; padding: 5px; border: 1px solid #c2cfd6; color: #64748b;">${escapeHtml(row.dpto)}</td>
               </tr>
             `).join('')}
           </tbody>
         </table>
 
         <!-- Weekly Timetable Grid -->
-        <h3 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 10px;">PROGRAMACIÃ“N HORARIA SEMANAL</h3>
+        <h3 style="color: #0f4c81; font-family: 'Segoe UI', sans-serif; margin-bottom: 10px;">PROGRAMACIÓN HORARIA SEMANAL</h3>
         <table border="1">
           <thead>
             <tr>
@@ -402,6 +340,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
 
   const generatePdf = async (shouldDownload = true) => {
     try {
+      const { jsPDF } = await import('jspdf');
       const doc = new jsPDF({
         orientation: 'landscape',
         unit: 'mm',
@@ -413,7 +352,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.setFillColor(15, 76, 129);
       doc.rect(0, 0, 297, 6, 'F');
 
-      let logoImg;
+      let logoImg: HTMLImageElement | undefined;
       try {
         logoImg = await loadImage('/images/logo.png');
       } catch (e) {
@@ -519,7 +458,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
       doc.setTextColor(255, 255, 255);
 
       // Column Widths for PDF Summary Table:
-      // NÂ°, DOCENTE, EXPERIENCIA, T, P, L, G, TOTAL, DPTO
+      // N°, DOCENTE, EXPERIENCIA, T, P, L, G, TOTAL, DPTO
       // Total width = 177mm
       const sumColWidths = [7, 45, 50, 6, 6, 6, 6, 13, 38];
 
@@ -821,7 +760,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
 
   return (
     <div className="w-full bg-white dark:bg-[#0f0f1a] rounded-[2rem] border border-gray-200 dark:border-white/10 shadow-sm overflow-hidden flex flex-col h-[1000px]">
-      <div className="flex-none p-6 border-b border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.02] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-none flex-col gap-4 border-b border-gray-200 bg-gray-50/50 p-6 xl:flex-row xl:items-center xl:justify-between dark:border-white/5 dark:bg-white/[0.02]">
         <div>
           <h3 className="text-xl font-bold text-foreground dark:text-white flex items-center gap-2">
             <Clock className="text-purple-600" />
@@ -831,7 +770,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
             Visualización panorámica de las asignaciones de Lunes a Sábado.
           </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
+        <div className="flex max-w-full flex-wrap items-center gap-3 self-start xl:shrink-0 xl:self-auto">
           <button
             onClick={exportToExcel}
             className="flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
@@ -862,17 +801,17 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 custom-scrollbar relative space-y-6">
+      <div className="relative flex-1 space-y-6 overflow-x-hidden overflow-y-auto p-4 custom-scrollbar sm:p-6">
 
 
 
-        <div className="min-w-[1000px] h-[900px] flex">
+        <div className="flex h-[900px] w-full min-w-0">
           {/* Y-Axis: Time Slots */}
-          <div className="w-20 flex-none border-r border-gray-200 dark:border-white/10 relative">
+          <div className="relative w-14 flex-none border-r border-gray-200 sm:w-16 dark:border-white/10">
             {timeSlots.map((time, index) => (
               <div
                 key={time}
-                className="absolute w-full text-right pr-3 text-xs font-bold text-muted-foreground -translate-y-1/2"
+                className="absolute w-full -translate-y-1/2 pr-2 text-right text-[10px] font-bold text-muted-foreground sm:pr-3 sm:text-xs"
                 style={{ top: `${(index / (END_HOUR - START_HOUR)) * 100}%` }}
               >
                 {time}
@@ -881,14 +820,14 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
           </div>
 
           {/* X-Axis: Days */}
-          <div className="flex-1 flex border-l border-gray-200 dark:border-white/10 bg-gray-50/30 dark:bg-black/20">
-            {DIAS.map((dia, dayIndex) => {
+          <div className="flex min-w-0 flex-1 border-l border-gray-200 bg-gray-50/30 dark:border-white/10 dark:bg-black/20">
+            {DIAS.map((dia) => {
               const diaHorarios = horarios.filter(h => h.dia === dia);
 
               return (
-                <div key={dia} className="flex-1 border-r border-gray-200 dark:border-white/10 relative">
+                <div key={dia} className="relative min-w-0 flex-1 border-r border-gray-200 dark:border-white/10">
                   {/* Day Header */}
-                  <div className="absolute top-0 w-[calc(100%-1rem)] left-2 -mt-8 text-center font-bold text-sm text-foreground dark:text-white bg-white dark:bg-[#0f0f1a] py-1 border border-gray-200 dark:border-white/10 rounded-full shadow-sm z-10">
+                  <div className="absolute left-1 top-0 z-10 -mt-8 w-[calc(100%-0.5rem)] truncate rounded-full border border-gray-200 bg-white px-1 py-1 text-center text-[10px] font-bold text-foreground shadow-sm sm:left-2 sm:w-[calc(100%-1rem)] sm:text-xs lg:text-sm dark:border-white/10 dark:bg-[#0f0f1a] dark:text-white">
                     {dia}
                   </div>
 
@@ -957,7 +896,7 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
                             <>
                               {/* Compact Layout for short slots (e.g. 1 hour) to prevent overflow */}
                               <div className="flex items-center justify-between gap-1 w-full overflow-hidden">
-                                <div className="font-bold truncate text-[11px]" title={horario.curso.nombre}>
+                                <div className="line-clamp-2 break-words text-[10px] font-bold leading-[1.15]" title={horario.curso.nombre}>
                                   {horario.curso.nombre}
                                 </div>
                                 {horario.grupo && (
@@ -984,18 +923,20 @@ const CalendarioHorarios: React.FC<CalendarioHorariosProps> = ({ horarios, selec
                           ) : (
                             <>
                               {/* Standard Vertical Layout for longer slots */}
-                              <div className="font-bold truncate" title={horario.curso.nombre}>
+                              <div className="line-clamp-3 break-words font-bold leading-[1.25]" title={horario.curso.nombre}>
                                 {horario.curso.nombre}
                               </div>
-                              <div className="opacity-80 font-medium text-[10px] uppercase mb-1">
+                              <div className="mt-1 border-b border-current/10 pb-1 text-[10px] font-medium uppercase opacity-80">
                                 {formatTime(horario.horaInicio)} - {formatTime(horario.horaFin)} ({horario.tipoCurso})
                               </div>
-                              <div className="mt-auto space-y-0.5 text-[10px]">
-                                <div className="flex items-center gap-1 truncate" title={horario.docente.nombre}>
-                                  <User size={10} className="shrink-0" /> {horario.docente.nombre}
+                              <div className="mt-2 space-y-1 text-[10px] leading-tight">
+                                <div className="flex items-start gap-1" title={horario.docente.nombre}>
+                                  <User size={10} className="mt-0.5 shrink-0" />
+                                  <span className="line-clamp-2 break-words">{horario.docente.nombre}</span>
                                 </div>
-                                <div className="flex items-center gap-1 truncate font-semibold" title={horario.aula.nombre}>
-                                  <MapPin size={10} className="shrink-0" /> {horario.aula.nombre}
+                                <div className="flex items-start gap-1 font-semibold" title={horario.aula.nombre}>
+                                  <MapPin size={10} className="mt-0.5 shrink-0" />
+                                  <span className="line-clamp-2 break-words">{horario.aula.nombre}</span>
                                 </div>
                                 {horario.grupo && (
                                   <div className="text-[9px] font-extrabold text-red-600 dark:text-red-400 uppercase tracking-widest text-center mt-1 border-t border-dashed border-red-200/50 dark:border-red-500/20 pt-1">

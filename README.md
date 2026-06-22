@@ -1,49 +1,77 @@
-# Examen Grupal – Sistema de Horarios
-**Proyecto:** Aplicación web para la creación de horarios de la Escuela de Ingeniería de Sistemas  
-**Universidad:** Universidad Nacional de Trujillo  
-**Curso/Proyecto:** Ingeniería de Sistemas – Examen Grupal  
-**Autor:** Alexander – Desarrollo profesional  
+# Sistema de Horarios UNT
 
----
+Aplicación web para gestionar docentes, cursos, aulas, disponibilidad, carga horaria y generación automática de horarios de la Universidad Nacional de Trujillo.
 
-## Descripción
-Este proyecto es un sistema web para la **generación automática de horarios** considerando la categoría y antigüedad de los docentes, tipos de cursos (teoría/laboratorio) y disponibilidad de aulas. Incluye:
+## Tecnologías
 
-- Dashboard interactivo con estadísticas descriptivas.
-- Validación de conflictos de horarios.
-- Reportes PDF operacionales y de gestión.
-- Consulta de horarios por docente y por aula/laboratorio.
-- Escalabilidad y seguridad mediante roles (admin/docente).
+- Next.js 15 (Pages Router), React 19 y TypeScript.
+- tRPC y TanStack Query.
+- Prisma y PostgreSQL.
+- Tailwind CSS.
+- Docker Compose para desarrollo local.
+- Vercel para despliegue web.
 
----
+## Desarrollo local con Docker
 
-## Stack Tecnológico
+```bash
+docker compose -f docker/docker-compose.yml up -d --build
+```
 
-| Capa                  | Tecnología                                   | Justificación |
-|-----------------------|---------------------------------------------|---------------|
-| Frontend              | Next.js + React + TypeScript                | SSR/SSG, tipado seguro, dashboards complejos |
-| UI / Componentes      | Tailwind CSS + Shadcn/ui                     | Estilización rápida y consistente, accesible |
-| Backend / API         | Next.js API Routes + tRPC                    | Monolito moderno con tipado extremo a extremo |
-| ORM                   | Prisma                                       | Relaciones complejas y migraciones declarativas |
-| Base de Datos         | PostgreSQL + Docker                           | Consistencia, transacciones, restricciones |
-| Reportes PDF          | Puppeteer + React                             | Renderizado controlado y exportable a PDF |
-| Motor de Asignación   | Servicio backend dedicado                     | Algoritmo de asignación transaccional y seguro |
+Servicios:
 
----
+- Aplicación: <http://localhost:3000>
+- PostgreSQL: `localhost:5433`
 
-## Estructura del Proyecto
+Para renovar las dependencias internas después de cambiar `package-lock.json`:
 
-```text
-/project-root
-├─ frontend/            # Componentes, layouts, páginas y hooks
-├─ backend/             # API Routes, Services, Middleware, Prisma
-├─ docker/              # Docker-compose para PostgreSQL + app
-├─ scripts/             # Seed de datos y utilidades
-├─ tests/               # Unit & Integration tests
-├─ public/              # Assets e imágenes
-├─ .prettierrc.js       # Configuración Prettier
-├─ .eslintrc.js         # Configuración ESLint
-├─ jest.config.js       # Configuración Jest
-├─ tsconfig.json        # Configuración TypeScript
-├─ package.json         # Dependencias y scripts
-└─ README.md            # Documentación del proyecto
+```bash
+docker compose -f docker/docker-compose.yml up -d --build --renew-anon-volumes app
+```
+
+## Comandos de calidad
+
+```bash
+npm ci
+npm run typecheck
+npm run lint
+npm test -- --runInBand
+npm run build
+```
+
+## Variables de entorno
+
+```dotenv
+DATABASE_URL=postgresql://...
+DIRECT_URL=postgresql://...
+JWT_SECRET=...
+```
+
+- `DATABASE_URL`: conexión con pooling para el runtime serverless.
+- `DIRECT_URL`: conexión directa utilizada por Prisma para migraciones.
+- `JWT_SECRET`: secreto obligatorio para firmar sesiones.
+
+En Docker, ambas conexiones apuntan al servicio interno `db:5432`.
+
+En Neon, `DATABASE_URL` debe usar el host con `-pooler` y límites de
+conexión apropiados para funciones serverless. `DIRECT_URL` debe usar el host
+directo, sin `-pooler`. Consulta [`.env.example`](.env.example) para ver el
+formato recomendado sin credenciales reales.
+
+## Despliegue en Vercel
+
+El proyecto usa Node.js 24, instalación reproducible con `npm ci` y Fluid Compute.
+
+1. Configura `DATABASE_URL`, `DIRECT_URL` y `JWT_SECRET` en Vercel.
+2. Aplica migraciones antes de promover una versión con cambios de esquema:
+
+   ```bash
+   npm run prisma:migrate:deploy
+   ```
+
+3. Despliega. Vercel ejecutará:
+
+   ```bash
+   npm run vercel-build
+   ```
+
+Las migraciones no se ejecutan durante el build para evitar carreras entre despliegues.

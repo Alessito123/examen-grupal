@@ -4,7 +4,6 @@ import {
   FileText, 
   Save, 
   Download, 
-  Plus, 
   Trash2, 
   Info, 
   AlertCircle, 
@@ -14,15 +13,10 @@ import {
   Search,
   User,
   Briefcase,
-  GraduationCap,
-  Calendar,
   Clock,
   MapPin,
-  Building2,
   Printer,
   Eye,
-  ChevronRight,
-  ChevronDown,
   Edit,
   X
 } from 'lucide-react';
@@ -30,7 +24,7 @@ import DashboardLayout from '../layouts/DashboardLayout';
 import ModalPDF from '../components/ModalPDF';
 import { useAuth } from '../hooks/useAuth';
 import { trpc } from '../utils/trpc';
-import jsPDF from 'jspdf';
+import type { jsPDF as JsPDF } from 'jspdf';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -41,6 +35,12 @@ import {
   getSemestresDinamicos,
   parseSemestreCodigo,
 } from '../utils/semestre';
+import {
+  CONDICIONES_DOCENTE,
+  REGIMEN_POR_CATEGORIA_CONTRATADA,
+  getCategoriaOptions,
+  getRegimenOptions,
+} from '../../shared/academic';
 
 const SEMESTRES = getSemestresDinamicos();
 
@@ -78,7 +78,9 @@ const getTargetHoursByDedicacion = (dedicacion?: string | null) => {
   const targets: Record<string, number> = {
     TC_40H: 40,
     DE_EXCLUSIVA: 40,
+    DOCENTE_INVESTIGADOR: 40,
     TP_20H: 20,
+    TP_4H: 4,
     TP_16H: 16,
     TP_12H: 12,
     TP_10H: 10,
@@ -151,7 +153,7 @@ type TeachingPdfRow = {
 
 type PdfFormatNumber = 1 | 2 | 3;
 type GeneratedPdf = {
-  doc: jsPDF;
+  doc: JsPDF;
   filename: string;
 };
 type CachedPdf = {
@@ -159,8 +161,10 @@ type CachedPdf = {
   filename: string;
 };
 
-const makePdfDoc = () => {
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+type JsPdfConstructor = typeof import('jspdf')['jsPDF'];
+
+const makePdfDoc = (PdfDocument: JsPdfConstructor) => {
+  const doc = new PdfDocument({ unit: 'pt', format: 'a4' });
   doc.setLineWidth(0.57);
   doc.setTextColor(0, 0, 0);
   return doc;
@@ -194,7 +198,7 @@ const getSchoolPdfLabel = (docente: any) => {
 };
 
 const drawCell = (
-  doc: jsPDF,
+  doc: JsPDF,
   text: string | number,
   x: number,
   y: number,
@@ -239,7 +243,7 @@ const drawCell = (
 };
 
 const splitPdfLines = (
-  doc: jsPDF,
+  doc: JsPDF,
   text: string | number,
   width: number,
   options: Pick<CellOptions, 'font' | 'fontSize' | 'padding' | 'style'> = {}
@@ -257,7 +261,7 @@ const splitPdfLines = (
 };
 
 const drawParagraph = (
-  doc: jsPDF,
+  doc: JsPDF,
   text: string,
   x: number,
   y: number,
@@ -379,6 +383,8 @@ const CargaHorariaPage: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState('');
   const [pdfCache, setPdfCache] = useState<Partial<Record<PdfFormatNumber, CachedPdf>>>({});
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isEditingCarga, setIsEditingCarga] = useState(true);
+  const [deleteCargaConfirmOpen, setDeleteCargaConfirmOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const pdfCacheRef = React.useRef<Partial<Record<PdfFormatNumber, CachedPdf>>>({});
 
@@ -435,6 +441,7 @@ const CargaHorariaPage: React.FC = () => {
   const saveCargaNoLectiva = trpc.cargaNoLectiva.save.useMutation({
     onSuccess: () => {
       setShowNotification({ type: 'success', message: 'Carga no lectiva guardada exitosamente.' });
+      setIsEditingCarga(false);
       cargaNoLectivaQuery.refetch();
     },
     onError: (err) => {
@@ -442,11 +449,23 @@ const CargaHorariaPage: React.FC = () => {
     }
   });
 
+  const deleteCargaNoLectiva = trpc.cargaNoLectiva.delete.useMutation({
+    onSuccess: () => {
+      setShowNotification({ type: 'success', message: 'Carga no lectiva eliminada correctamente.' });
+      setDeleteCargaConfirmOpen(false);
+      setIsEditingCarga(true);
+      cargaNoLectivaQuery.refetch();
+    },
+    onError: (err) => {
+      setShowNotification({ type: 'error', message: 'Error al eliminar: ' + err.message });
+    },
+  });
+
   // Local state for profile form
   const [profileForm, setProfileForm] = useState({
     nombre: '',
     codigoIBM: '',
-    condicion: 'NOMBRADO' as 'NOMBRADO' | 'CONTRATADO',
+    condicion: 'ORDINARIO' as 'ORDINARIO' | 'EXTRAORDINARIO' | 'CONTRATADO',
     categoria: 'asociado' as any,
     dedicacion: 'TC_40H' as any,
     dni: '',
@@ -455,17 +474,22 @@ const CargaHorariaPage: React.FC = () => {
   useEffect(() => {
     if (docenteQuery.data) {
       const rawCategoria = (docenteQuery.data as any).categoria;
-      const categoria = rawCategoria === 'contratado' ? 'profesor' : rawCategoria;
+      const categoria = rawCategoria === 'profesor' || rawCategoria === 'alumno' ? 'auxiliar' : rawCategoria;
       setProfileForm({
         nombre: docenteQuery.data.nombre,
         codigoIBM: (docenteQuery.data as any).codigoIBM || '',
-        condicion: rawCategoria === 'contratado' ? 'CONTRATADO' : ((docenteQuery.data as any).condicion || 'NOMBRADO'),
+        condicion: (docenteQuery.data as any).condicion === 'NOMBRADO'
+          ? 'ORDINARIO'
+          : ((docenteQuery.data as any).condicion || 'ORDINARIO'),
         categoria,
         dedicacion: (docenteQuery.data as any).dedicacion || 'TC_40H',
         dni: docenteQuery.data.dni || '',
       });
     }
   }, [docenteQuery.data]);
+
+  const profileCategoryOptions = getCategoriaOptions(profileForm.condicion);
+  const profileRegimenOptions = getRegimenOptions(profileForm.condicion, profileForm.categoria);
 
   // Local state for the form
   const [formData, setFormData] = useState({
@@ -509,8 +533,36 @@ const CargaHorariaPage: React.FC = () => {
         detallesResponsabilidad: cargaNoLectivaQuery.data.detallesResponsabilidad || '',
         detallesComisiones: cargaNoLectivaQuery.data.detallesComisiones || '',
       });
+      setIsEditingCarga(false);
+    } else if (!cargaNoLectivaQuery.isLoading && !cargaNoLectivaQuery.isFetching) {
+      setFormData({
+        preparacionEvaluacion: 0,
+        consejeria: 0,
+        investigacion: 0,
+        capacitacion: 0,
+        gobierno: 0,
+        administracion: 0,
+        asesoriaTesis: 0,
+        responsabilidadSocial: 0,
+        comisiones: 0,
+        otros: 0,
+        detallesConsejeria: '',
+        detallesInvestigacion: '',
+        detallesGobierno: '',
+        detallesAdministracion: '',
+        detallesAsesoria: '',
+        detallesResponsabilidad: '',
+        detallesComisiones: '',
+      });
+      setIsEditingCarga(true);
     }
-  }, [cargaNoLectivaQuery.data]);
+  }, [cargaNoLectivaQuery.data, cargaNoLectivaQuery.isLoading, cargaNoLectivaQuery.isFetching, selectedSemestre]);
+
+  useEffect(() => {
+    if (!showNotification) return;
+    const timeoutId = window.setTimeout(() => setShowNotification(null), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [showNotification]);
 
   // Calculations
   const teachingHorarios = React.useMemo(
@@ -539,6 +591,8 @@ const CargaHorariaPage: React.FC = () => {
   const semestreDateLabels = getSemestreDateLabels(semestreQuery.data as any);
   const targetHours = getTargetHoursByDedicacion((docenteQuery.data as any)?.dedicacion);
   const remainingHours = targetHours === null ? 0 : targetHours - grandTotal;
+  const hasSavedCarga = Boolean(cargaNoLectivaQuery.data);
+  const isCargaLocked = hasSavedCarga && !isEditingCarga;
   const validationState = React.useMemo(() => {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -597,7 +651,7 @@ const CargaHorariaPage: React.FC = () => {
 
     const condicion = (docenteQuery.data as any)?.condicion;
     const dedicacion = (docenteQuery.data as any)?.dedicacion;
-    const minInvestigacion = condicion === 'NOMBRADO'
+    const minInvestigacion = condicion === 'ORDINARIO'
       ? dedicacion === 'DE_EXCLUSIVA'
         ? 5
         : dedicacion === 'TC_40H'
@@ -683,6 +737,10 @@ const CargaHorariaPage: React.FC = () => {
 
   const handleSave = () => {
     if (!user?.id) return;
+    if (isCargaLocked) {
+      setShowNotification({ type: 'error', message: 'Haz clic en Editar para habilitar los cambios.' });
+      return;
+    }
     if (validationState.errors.length > 0) {
       setDismissedValidationKey('');
       setLiveValidationVisible(true);
@@ -693,6 +751,14 @@ const CargaHorariaPage: React.FC = () => {
       docenteId: user.id,
       semestre: selectedSemestre,
       ...formData
+    });
+  };
+
+  const handleDeleteCarga = () => {
+    if (!user?.id || !hasSavedCarga) return;
+    deleteCargaNoLectiva.mutate({
+      docenteId: user.id,
+      semestre: selectedSemestre,
     });
   };
 
@@ -710,8 +776,8 @@ const CargaHorariaPage: React.FC = () => {
   };
 
   // PDF Generation Logic (Format 1)
-  const generateFormat1 = () => {
-    const doc = makePdfDoc();
+  const generateFormat1 = (PdfDocument: JsPdfConstructor) => {
+    const doc = makePdfDoc(PdfDocument);
     const d = docenteQuery.data;
     if (!d) return null;
 
@@ -859,8 +925,8 @@ const CargaHorariaPage: React.FC = () => {
     };
   };
 
-  const generateFormat2 = () => {
-    const doc = makePdfDoc();
+  const generateFormat2 = (PdfDocument: JsPdfConstructor) => {
+    const doc = makePdfDoc(PdfDocument);
     const d = docenteQuery.data;
     if (!d) return null;
 
@@ -899,8 +965,8 @@ const CargaHorariaPage: React.FC = () => {
     };
   };
 
-  const generateFormat3 = () => {
-    const doc = makePdfDoc();
+  const generateFormat3 = (PdfDocument: JsPdfConstructor) => {
+    const doc = makePdfDoc(PdfDocument);
     const d = docenteQuery.data;
     if (!d) return null;
 
@@ -943,17 +1009,23 @@ const CargaHorariaPage: React.FC = () => {
     };
   };
 
-  const getGeneratedFormat = (formatNumber: PdfFormatNumber): GeneratedPdf | null => {
-    if (formatNumber === 1) return generateFormat1();
-    if (formatNumber === 2) return generateFormat2();
-    return generateFormat3();
+  const getGeneratedFormat = async (
+    formatNumber: PdfFormatNumber
+  ): Promise<GeneratedPdf | null> => {
+    const { jsPDF } = await import('jspdf');
+
+    if (formatNumber === 1) return generateFormat1(jsPDF);
+    if (formatNumber === 2) return generateFormat2(jsPDF);
+    return generateFormat3(jsPDF);
   };
 
-  const getCachedOrGeneratePdf = (formatNumber: PdfFormatNumber): CachedPdf | null => {
+  const getCachedOrGeneratePdf = async (
+    formatNumber: PdfFormatNumber
+  ): Promise<CachedPdf | null> => {
     const cached = pdfCacheRef.current[formatNumber];
     if (cached) return cached;
 
-    const generated = getGeneratedFormat(formatNumber);
+    const generated = await getGeneratedFormat(formatNumber);
     if (!generated) return null;
 
     const url = URL.createObjectURL(generated.doc.output('blob'));
@@ -974,16 +1046,16 @@ const CargaHorariaPage: React.FC = () => {
     return nextItem;
   };
 
-  const handlePreviewFormat = (formatNumber: PdfFormatNumber) => {
-    const pdf = getCachedOrGeneratePdf(formatNumber);
+  const handlePreviewFormat = async (formatNumber: PdfFormatNumber) => {
+    const pdf = await getCachedOrGeneratePdf(formatNumber);
     if (!pdf) return;
 
     setPreviewUrl(pdf.url);
     setPreviewOpen(true);
   };
 
-  const handleDownloadFormat = (formatNumber: PdfFormatNumber) => {
-    const pdf = getCachedOrGeneratePdf(formatNumber);
+  const handleDownloadFormat = async (formatNumber: PdfFormatNumber) => {
+    const pdf = await getCachedOrGeneratePdf(formatNumber);
     if (!pdf) return;
 
     const link = document.createElement('a');
@@ -1001,8 +1073,16 @@ const CargaHorariaPage: React.FC = () => {
       asociado: 'Asociado',
       auxiliar: 'Auxiliar',
       jefe_practica: 'Jefe de Práctica',
-      profesor: 'Profesor',
-      alumno: 'Alumno'
+      tipo_a1: 'Tipo A1',
+      tipo_a2: 'Tipo A2',
+      tipo_a3: 'Tipo A3',
+      tipo_b1: 'Tipo B1',
+      tipo_b2: 'Tipo B2',
+      tipo_b3: 'Tipo B3',
+      cesante: 'Cesante',
+      experto: 'Experto',
+      emerito: 'Emerito',
+      invitado_especial: 'Invitado especial',
     };
     return labels[categoria.toLowerCase()] || categoria;
   };
@@ -1065,7 +1145,7 @@ const CargaHorariaPage: React.FC = () => {
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Condición</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
-                {(docenteQuery.data as any)?.condicion || 'NOMBRADO'}
+                {getCondicionLabel((docenteQuery.data as any)?.condicion)}
               </p>
             </div>
             <div className="space-y-1">
@@ -1076,10 +1156,10 @@ const CargaHorariaPage: React.FC = () => {
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Dedicación</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Regimen</p>
               <p className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-orange-500" />
-                {(docenteQuery.data as any)?.dedicacion?.replace('_', ' ') || 'TC_40H'}
+                {getDedicacionLabel((docenteQuery.data as any)?.dedicacion)}
               </p>
             </div>
           </div>
@@ -1252,7 +1332,18 @@ const CargaHorariaPage: React.FC = () => {
                             <Briefcase className="text-purple-600" size={24} />
                             Trabajo No Lectivo
                         </h3>
-                        <p className="text-sm text-gray-500 mt-1">Completa tus horas de preparación, investigación y gestión.</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <p className="text-sm text-gray-500">Completa tus horas de preparación, investigación y gestión.</p>
+                            {hasSavedCarga && (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                isCargaLocked
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                  : 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+                              }`}>
+                                {isCargaLocked ? 'Guardada y bloqueada' : 'Modo edición'}
+                              </span>
+                            )}
+                        </div>
                     </div>
                     <div className="text-right">
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total de Horas</p>
@@ -1264,7 +1355,10 @@ const CargaHorariaPage: React.FC = () => {
 
                 <div className="p-6 space-y-6">
                     {/* Rubros Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <fieldset
+                        disabled={isCargaLocked}
+                        className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity ${isCargaLocked ? 'opacity-65' : ''}`}
+                    >
                         {/* Preparation rubro */}
                         <div className="space-y-4 p-5 rounded-3xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">
                             <div className="flex justify-between items-start">
@@ -1525,7 +1619,7 @@ const CargaHorariaPage: React.FC = () => {
                                 className="w-full text-xs bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-purple-500/20 p-3 min-h-[70px]"
                             />
                         </div>
-                    </div>
+                    </fieldset>
 
                     {(validationState.errors.length > 0 || validationState.warnings.length > 0) && (
                         <div className="space-y-2">
@@ -1558,13 +1652,34 @@ const CargaHorariaPage: React.FC = () => {
                                       : `Exceso de ${formatHourValue(Math.abs(remainingHours))} horas sobre ${targetHours}`}
                             </span>
                         </div>
-                        <button 
-                            onClick={handleSave}
-                            disabled={saveCargaNoLectiva.isPending}
-                            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-2xl font-bold shadow-lg shadow-purple-600/20 transition-all disabled:opacity-50"
-                        >
-                            {saveCargaNoLectiva.isPending ? 'Guardando...' : <><Save size={18} /> Guardar Cambios</>}
-                        </button>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsEditingCarga(true)}
+                                disabled={!hasSavedCarga || isEditingCarga || saveCargaNoLectiva.isPending || deleteCargaNoLectiva.isPending}
+                                className="flex items-center gap-2 border border-blue-200 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 px-4 py-3 rounded-2xl font-bold transition-all hover:bg-blue-100 dark:hover:bg-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <Edit size={18} />
+                                Editar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDeleteCargaConfirmOpen(true)}
+                                disabled={!hasSavedCarga || saveCargaNoLectiva.isPending || deleteCargaNoLectiva.isPending}
+                                className="flex items-center gap-2 border border-red-200 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 px-4 py-3 rounded-2xl font-bold transition-all hover:bg-red-100 dark:hover:bg-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <Trash2 size={18} />
+                                Eliminar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={saveCargaNoLectiva.isPending || deleteCargaNoLectiva.isPending || isCargaLocked}
+                                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-purple-600/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {saveCargaNoLectiva.isPending ? 'Guardando...' : <><Save size={18} /> Guardar Cambios</>}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1627,6 +1742,46 @@ const CargaHorariaPage: React.FC = () => {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {deleteCargaConfirmOpen && (
+          <div className="fixed inset-0 z-[240] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              className="w-full max-w-md bg-white dark:bg-[#0f0f1a] border border-gray-200 dark:border-white/10 rounded-3xl p-7 shadow-2xl"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-300 flex items-center justify-center mb-5">
+                <Trash2 size={26} />
+              </div>
+              <h3 className="text-xl font-black text-gray-900 dark:text-white">Eliminar carga guardada</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
+                Se eliminará tu declaración de trabajo no lectivo del periodo <strong>{selectedSemestre}</strong>.
+                La carga lectiva asignada por el administrador permanecerá intacta.
+              </p>
+              <div className="flex gap-3 mt-7">
+                <button
+                  type="button"
+                  onClick={() => setDeleteCargaConfirmOpen(false)}
+                  disabled={deleteCargaNoLectiva.isPending}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 text-gray-600 dark:text-gray-300 font-bold disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteCarga}
+                  disabled={deleteCargaNoLectiva.isPending}
+                  className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {deleteCargaNoLectiva.isPending ? 'Eliminando...' : <><Trash2 size={17} /> Eliminar</>}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Profile Modal (Image 5 style) */}
       <AnimatePresence>
         {isProfileModalOpen && (
@@ -1680,45 +1835,57 @@ const CargaHorariaPage: React.FC = () => {
                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Condición</label>
                         <select 
                             value={profileForm.condicion}
-                            onChange={(e) => setProfileForm(prev => ({ ...prev, condicion: e.target.value as any }))}
+                            onChange={(e) => {
+                              const condicion = e.target.value as any;
+                              const categoria = getCategoriaOptions(condicion)[0]?.value || 'auxiliar';
+                              const dedicacion = getRegimenOptions(condicion, categoria)[0]?.value || 'TC_40H';
+                              setProfileForm((prev) => ({ ...prev, condicion, categoria, dedicacion }));
+                            }}
                             className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-purple-500/20"
                         >
-                            <option value="NOMBRADO">Nombrado</option>
-                            <option value="CONTRATADO">Contratado</option>
+                            {CONDICIONES_DOCENTE.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
                         </select>
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Categoría</label>
                         <select 
                             value={profileForm.categoria}
-                            onChange={(e) => setProfileForm(prev => ({ ...prev, categoria: e.target.value as any }))}
+                            onChange={(e) => {
+                              const categoria = e.target.value;
+                              const forced = REGIMEN_POR_CATEGORIA_CONTRATADA[categoria];
+                              const allowed = getRegimenOptions(profileForm.condicion, categoria);
+                              setProfileForm((prev) => ({
+                                ...prev,
+                                categoria,
+                                dedicacion: forced || (
+                                  allowed.some((option) => option.value === prev.dedicacion)
+                                    ? prev.dedicacion
+                                    : allowed[0]?.value || 'TC_40H'
+                                ),
+                              }));
+                            }}
                             className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-purple-500/20"
                         >
-                            <option value="principal">Principal</option>
-                            <option value="asociado">Asociado</option>
-                            <option value="auxiliar">Auxiliar</option>
-                            <option value="jefe_practica">Jefe de Práctica</option>
-                            <option value="profesor">Profesor</option>
-                            <option value="alumno">Alumno</option>
+                            {profileCategoryOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
                         </select>
                     </div>
                 </div>
 
                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Dedicación / Modalidad</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Regimen</label>
                     <select 
                         value={profileForm.dedicacion}
                         onChange={(e) => setProfileForm(prev => ({ ...prev, dedicacion: e.target.value as any }))}
+                        disabled={profileForm.condicion === 'CONTRATADO' && !!REGIMEN_POR_CATEGORIA_CONTRATADA[profileForm.categoria]}
                         className="w-full bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 rounded-xl focus:ring-purple-500/20"
                     >
-                        <option value="DE_EXCLUSIVA">Dedicación Exclusiva</option>
-                        <option value="TP">Tiempo Parcial</option>
-                        <option value="TP_8H">Tiempo Parcial 8H</option>
-                        <option value="TP_10H">Tiempo Parcial 10H</option>
-                        <option value="TP_12H">Tiempo Parcial 12H</option>
-                        <option value="TP_16H">Tiempo Parcial 16H</option>
-                        <option value="TP_20H">Tiempo Parcial 20H</option>
-                        <option value="TC_40H">Tiempo Completo 40H</option>
+                        {profileRegimenOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
                     </select>
                 </div>
 

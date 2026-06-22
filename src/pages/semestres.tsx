@@ -4,6 +4,7 @@ import { trpc } from '../utils/trpc';
 import { useAuth } from '../hooks/useAuth';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  AlertTriangle,
   CalendarRange,
   CheckCircle2,
   Edit3,
@@ -12,11 +13,13 @@ import {
   Save,
   ShieldAlert,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react';
 import { formatDatePE, toDateInputValue } from '../utils/semestre';
 
-type Ciclo = 'I' | 'II';
+type Ciclo = 'I' | 'II' | 'ANUAL' | 'NIVELACION';
+type TipoPeriodo = 'SEMESTRAL' | 'ANUAL_MEDICINA' | 'NIVELACION';
 
 const currentYear = new Date().getFullYear();
 
@@ -28,11 +31,17 @@ const SemestresPage: React.FC = () => {
   const [form, setForm] = React.useState({
     anio: currentYear,
     ciclo: 'I' as Ciclo,
+    tipoPeriodo: 'SEMESTRAL' as TipoPeriodo,
+    facultad: null as string | null,
     fechaInicio: '',
     fechaFin: '',
     activo: true,
   });
   const [editingCodigo, setEditingCodigo] = React.useState<string | null>(null);
+  const [semestreToDelete, setSemestreToDelete] = React.useState<{
+    codigo: string;
+    activo: boolean;
+  } | null>(null);
   const [toast, setToast] = React.useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const showToast = (type: 'success' | 'error', message: string) => {
@@ -58,7 +67,29 @@ const SemestresPage: React.FC = () => {
     onError: (error) => showToast('error', error.message),
   });
 
-  const codigoPreview = `${form.anio}-${form.ciclo}`;
+  const deleteMutation = trpc.semestres.delete.useMutation({
+    onSuccess: async (result) => {
+      await utils.semestres.invalidate();
+      await utils.estadisticas.getDashboard.invalidate();
+
+      if (editingCodigo === result.codigo) {
+        resetForm();
+      }
+
+      setSemestreToDelete(null);
+      const activeMessage = result.nuevoActivo
+        ? ` ${result.nuevoActivo} ahora es el semestre activo.`
+        : '';
+      showToast('success', `Semestre ${result.codigo} eliminado correctamente.${activeMessage}`);
+    },
+    onError: (error) => showToast('error', error.message),
+  });
+
+  const codigoPreview = form.tipoPeriodo === 'ANUAL_MEDICINA'
+    ? `${form.anio}-ANUAL-MEDICINA`
+    : form.tipoPeriodo === 'NIVELACION'
+      ? `${form.anio}-NIVELACION`
+      : `${form.anio}-${form.ciclo}`;
   const isAdmin = user?.rol === 'ADMIN';
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -82,6 +113,8 @@ const SemestresPage: React.FC = () => {
     setForm({
       anio: semestre.anio,
       ciclo: semestre.ciclo as Ciclo,
+      tipoPeriodo: semestre.tipoPeriodo || 'SEMESTRAL',
+      facultad: semestre.facultad || null,
       fechaInicio: toDateInputValue(semestre.fechaInicio),
       fechaFin: toDateInputValue(semestre.fechaFin),
       activo: Boolean(semestre.activo),
@@ -93,6 +126,8 @@ const SemestresPage: React.FC = () => {
     setForm({
       anio: currentYear,
       ciclo: 'I',
+      tipoPeriodo: 'SEMESTRAL',
+      facultad: null,
       fechaInicio: '',
       fechaFin: '',
       activo: true,
@@ -189,6 +224,35 @@ const SemestresPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2 space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Tipo de periodo</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {([
+                    ['SEMESTRAL', 'Semestral'],
+                    ['ANUAL_MEDICINA', 'Anual Medicina'],
+                    ['NIVELACION', 'Nivelacion / Verano'],
+                  ] as Array<[TipoPeriodo, string]>).map(([tipo, label]) => (
+                    <button
+                      key={tipo}
+                      type="button"
+                      onClick={() => setForm((prev) => ({
+                        ...prev,
+                        tipoPeriodo: tipo,
+                        ciclo: tipo === 'ANUAL_MEDICINA' ? 'ANUAL' : tipo === 'NIVELACION' ? 'NIVELACION' : 'I',
+                        facultad: tipo === 'ANUAL_MEDICINA' ? 'Medicina' : null,
+                      }))}
+                      className={`px-3 py-3 rounded-xl text-xs font-black border transition-all ${
+                        form.tipoPeriodo === tipo
+                          ? 'bg-purple-600 border-purple-600 text-white shadow-md'
+                          : 'bg-gray-50 dark:bg-black/20 border-gray-200 dark:border-white/10 text-gray-500'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Anio academico</label>
                 <input
@@ -201,7 +265,7 @@ const SemestresPage: React.FC = () => {
                 />
               </div>
 
-              <div className="space-y-2">
+              {form.tipoPeriodo === 'SEMESTRAL' && <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Ciclo</label>
                 <div className="grid grid-cols-2 gap-2 bg-gray-100 dark:bg-white/5 rounded-xl p-1 border border-gray-200 dark:border-white/10">
                   {(['I', 'II'] as Ciclo[]).map((ciclo) => (
@@ -219,8 +283,20 @@ const SemestresPage: React.FC = () => {
                     </button>
                   ))}
                 </div>
-              </div>
+              </div>}
             </div>
+
+            {form.tipoPeriodo === 'ANUAL_MEDICINA' && (
+              <div className="p-4 rounded-2xl border border-blue-200 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/10 text-sm text-blue-800 dark:text-blue-200">
+                Periodo anual para rotaciones, asignaturas clinicas e internado de la Facultad de Medicina.
+              </div>
+            )}
+
+            {form.tipoPeriodo === 'NIVELACION' && (
+              <div className="p-4 rounded-2xl border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 text-sm text-amber-800 dark:text-amber-200">
+                Ciclo extraordinario corto de nivelacion o verano, normalmente programado entre enero y marzo.
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -308,6 +384,13 @@ const SemestresPage: React.FC = () => {
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-lg font-black text-gray-900 dark:text-white">{semestre.codigo}</h3>
+                          <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/5 text-gray-500 text-[10px] font-black uppercase tracking-widest">
+                            {semestre.tipoPeriodo === 'ANUAL_MEDICINA'
+                              ? 'Anual Medicina'
+                              : semestre.tipoPeriodo === 'NIVELACION'
+                                ? 'Nivelacion'
+                                : 'Semestral'}
+                          </span>
                           {semestre.activo && (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-widest">
                               Activo
@@ -338,8 +421,21 @@ const SemestresPage: React.FC = () => {
                         onClick={() => startEdit(semestre)}
                         className="p-2.5 rounded-xl text-gray-500 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-all"
                         title="Editar semestre"
+                        aria-label={`Editar semestre ${semestre.codigo}`}
                       >
                         <Edit3 size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSemestreToDelete({
+                          codigo: semestre.codigo,
+                          activo: Boolean(semestre.activo),
+                        })}
+                        className="p-2.5 rounded-xl text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all"
+                        title="Eliminar semestre"
+                        aria-label={`Eliminar semestre ${semestre.codigo}`}
+                      >
+                        <Trash2 size={18} />
                       </button>
                     </div>
                   </div>
@@ -348,6 +444,65 @@ const SemestresPage: React.FC = () => {
             </div>
           </motion.div>
         </div>
+
+        <AnimatePresence>
+          {semestreToDelete && (
+            <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 20 }}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-semester-title"
+                className="bg-white dark:bg-[#0f0f1a] w-full max-w-md rounded-[2rem] border border-gray-200 dark:border-white/10 shadow-2xl overflow-hidden"
+              >
+                <div className="p-8 text-center space-y-6">
+                  <div className="w-20 h-20 bg-red-100 dark:bg-red-500/10 rounded-3xl flex items-center justify-center text-red-600 mx-auto">
+                    <AlertTriangle size={40} />
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 id="delete-semester-title" className="text-2xl font-black text-gray-900 dark:text-white">
+                      ¿Eliminar semestre?
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Se eliminará <span className="font-black text-gray-900 dark:text-white">{semestreToDelete.codigo}</span>,
+                      junto con sus horarios, disponibilidades y cargas no lectivas. Esta acción no se puede deshacer.
+                    </p>
+                    {semestreToDelete.activo && (
+                      <p className="text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-xl p-3">
+                        Es el semestre activo. El sistema activará automáticamente el periodo más reciente disponible.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSemestreToDelete(null)}
+                      disabled={deleteMutation.isPending}
+                      className="flex-1 py-3.5 rounded-xl border border-gray-200 dark:border-white/10 font-black text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5 transition-all disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteMutation.mutate({ codigo: semestreToDelete.codigo })}
+                      disabled={deleteMutation.isPending}
+                      className="flex-1 py-3.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black shadow-lg shadow-red-600/20 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {deleteMutation.isPending
+                        ? <Loader2 size={18} className="animate-spin" />
+                        : <Trash2 size={18} />}
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </DashboardLayout>
   );

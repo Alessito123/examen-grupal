@@ -1,68 +1,38 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
+import dynamic from 'next/dynamic';
+import { motion } from 'framer-motion';
 import { 
   Calendar, Users, Layout, Shield, BarChart3, Download, 
-  ArrowRight, CheckCircle2, Clock, Globe, Star, PlayCircle, 
-  Layers, ChevronRight, Zap, Sparkles
+  ArrowRight, CheckCircle2, Globe, Star, Zap, Sparkles
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/dist/ScrollTrigger';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Stars, Float, PerspectiveCamera } from '@react-three/drei';
-import * as THREE from 'three';
 
 if (typeof window !== 'undefined') {
   gsap.registerPlugin(ScrollTrigger);
 }
 
-// ==========================================
-// 3D Components
-// ==========================================
+const LandingBackgroundFallback = () => (
+  <div className="h-full w-full bg-[radial-gradient(circle_at_18%_22%,rgba(168,85,247,0.18)_0,transparent_2px),radial-gradient(circle_at_76%_30%,rgba(96,165,250,0.14)_0,transparent_1.5px),radial-gradient(circle_at_54%_72%,rgba(216,180,254,0.16)_0,transparent_2px)] bg-[length:180px_180px,230px_230px,280px_280px] opacity-60" />
+);
 
-const WireframeGlobe = () => {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const innerMeshRef = useRef<THREE.Mesh>(null);
-  
-  useFrame((state) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y = state.clock.getElapsedTime() * 0.15;
-      meshRef.current.rotation.x = Math.sin(state.clock.getElapsedTime() * 0.3) * 0.2;
-    }
-    if (innerMeshRef.current) {
-      innerMeshRef.current.rotation.y = -state.clock.getElapsedTime() * 0.2;
-    }
-  });
+const LandingHeroFallback = () => (
+  <div className="h-full w-full">
+    <div className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-purple-400/15 bg-purple-500/5 shadow-[0_0_100px_rgba(168,85,247,0.18)] blur-[1px]" />
+    <div className="absolute left-1/2 top-1/2 h-36 w-36 -translate-x-1/2 -translate-y-1/2 rounded-full bg-purple-400/10 blur-3xl" />
+  </div>
+);
 
-  return (
-    <group>
-      <Float speed={2} rotationIntensity={0.5} floatIntensity={1}>
-        <mesh ref={meshRef}>
-          <icosahedronGeometry args={[2.5, 2]} />
-          <meshBasicMaterial color="#a855f7" wireframe transparent opacity={0.3} />
-        </mesh>
-        <mesh ref={innerMeshRef}>
-          <icosahedronGeometry args={[1.5, 1]} />
-          <meshBasicMaterial color="#c084fc" wireframe transparent opacity={0.15} />
-        </mesh>
-        
-        {/* Glowing Core */}
-        <mesh>
-          <sphereGeometry args={[0.8, 32, 32]} />
-          <meshBasicMaterial color="#d8b4fe" transparent opacity={0.8} />
-          <pointLight color="#a855f7" intensity={2} distance={10} />
-        </mesh>
-      </Float>
-    </group>
-  );
-};
-
-const BackgroundParticles = () => {
-  return (
-    <Stars radius={50} depth={50} count={3000} factor={4} saturation={1} fade speed={1} />
-  );
-};
+const LandingBackground3D = dynamic(
+  () => import('../components/LandingVisuals').then((module) => module.LandingBackground3D),
+  { ssr: false, loading: () => null }
+);
+const LandingHero3D = dynamic(
+  () => import('../components/LandingVisuals').then((module) => module.LandingHero3D),
+  { ssr: false, loading: () => null }
+);
 
 // ==========================================
 // Custom Cursor
@@ -78,8 +48,6 @@ const CustomCursor = () => {
 
     let mouseX = window.innerWidth / 2;
     let mouseY = window.innerHeight / 2;
-    let cursorX = mouseX;
-    let cursorY = mouseY;
     let rafId: number;
 
     const updateCursor = () => {
@@ -141,17 +109,13 @@ const CustomCursor = () => {
 
 const LandingPage: React.FC = () => {
   const [mounted, setMounted] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     setMounted(true);
-    // Simulate initial loading sequence for assets
-    const timer = setTimeout(() => setIsLoading(false), 2000);
-    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (!mounted || isLoading) return;
+    if (!mounted) return;
 
     // Initialize GSAP ScrollTriggers
     const sections = gsap.utils.toArray('.gsap-reveal');
@@ -187,24 +151,7 @@ const LandingPage: React.FC = () => {
       });
     });
 
-  }, [mounted, isLoading]);
-
-  // Loading Screen
-  if (isLoading) {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#0f0f1a] flex flex-col items-center justify-center">
-        <div className="relative w-24 h-24 mb-8">
-          <div className="absolute inset-0 border-t-2 border-purple-500 rounded-full animate-spin" />
-          <div className="absolute inset-2 border-r-2 border-pink-500 rounded-full animate-spin-reverse" />
-          <div className="absolute inset-4 border-b-2 border-blue-500 rounded-full animate-spin" />
-          <Calendar className="absolute inset-0 m-auto text-white w-6 h-6 animate-pulse" />
-        </div>
-        <div className="text-purple-400 font-mono tracking-widest text-sm animate-pulse uppercase">
-          Iniciando Núcleo 3D...
-        </div>
-      </div>
-    );
-  }
+  }, [mounted]);
 
   return (
     <div className="min-h-screen bg-[#05050A] text-white overflow-x-hidden selection:bg-purple-500 selection:text-white font-sans relative">
@@ -313,11 +260,10 @@ const LandingPage: React.FC = () => {
 
       {/* Global 3D Background */}
       <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
-        {mounted && (
-          <Canvas camera={{ position: [0, 0, 1] }}>
-            <BackgroundParticles />
-          </Canvas>
-        )}
+        <LandingBackgroundFallback />
+        <div className="absolute inset-0">
+          <LandingBackground3D />
+        </div>
       </div>
 
       {/* Futuristic Navigation */}
@@ -336,13 +282,11 @@ const LandingPage: React.FC = () => {
             </Link>
             <Link 
               href="/login" 
-              className="group relative px-6 py-2.5 rounded-full bg-white text-black text-sm font-bold overflow-hidden shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(168,85,247,0.4)] transition-all"
+              className="group relative flex items-center gap-1.5 overflow-hidden rounded-full bg-white px-6 py-2.5 text-sm font-bold text-black shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all duration-300 hover:-translate-y-0.5 hover:text-white hover:shadow-[0_0_30px_rgba(168,85,247,0.4)]"
             >
+              <span className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-500 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               <span className="relative z-10">Comenzar Ahora</span>
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 text-white font-bold transition-opacity duration-300">
-                Acceder <ArrowRight className="w-4 h-4 ml-1" />
-              </span>
+              <ArrowRight className="relative z-10 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
             </Link>
           </div>
         </div>
@@ -354,16 +298,12 @@ const LandingPage: React.FC = () => {
         
         {/* 3D Canvas Layer for Hero */}
         <div className="absolute inset-0 z-0 flex items-center justify-end pr-[10%] opacity-30 md:opacity-100 pointer-events-none md:pointer-events-auto">
-          {mounted && (
-            <div className="w-full h-full md:w-[600px] md:h-[600px] absolute right-0">
-              <Canvas camera={{ position: [0, 0, 6], fov: 45 }}>
-                <ambientLight intensity={0.5} />
-                <PerspectiveCamera makeDefault position={[0, 0, 6]} />
-                <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.5} />
-                <WireframeGlobe />
-              </Canvas>
+          <div className="w-full h-full md:w-[600px] md:h-[600px] absolute right-0">
+            <LandingHeroFallback />
+            <div className="absolute inset-0">
+              <LandingHero3D />
             </div>
-          )}
+          </div>
         </div>
 
         <div className="max-w-7xl mx-auto px-6 w-full relative z-10 grid md:grid-cols-2 gap-12">
@@ -441,7 +381,10 @@ const LandingPage: React.FC = () => {
             ].map((step, i) => (
               <div key={i} className="gsap-reveal relative z-10 flex flex-col items-center text-center group">
                 <div className="w-20 h-20 rounded-full glass-panel border border-purple-500/30 flex items-center justify-center mb-6 text-purple-400 group-hover:scale-110 group-hover:bg-purple-500/20 transition-all duration-500 shadow-[0_0_20px_rgba(168,85,247,0.1)]">
-                  {React.cloneElement(step.icon as React.ReactElement, { className: "w-8 h-8" })}
+                  {React.cloneElement(
+                    step.icon as React.ReactElement<{ className?: string }>,
+                    { className: 'w-8 h-8' }
+                  )}
                 </div>
                 <h3 className="text-xl font-bold mb-3">{step.title}</h3>
                 <p className="text-gray-400 text-sm leading-relaxed">{step.desc}</p>

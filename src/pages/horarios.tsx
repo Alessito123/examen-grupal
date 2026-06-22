@@ -1,14 +1,16 @@
 import React, { useState, useMemo } from 'react';
+import { useRouter } from 'next/router';
 import DashboardLayout from '../layouts/DashboardLayout';
 import { trpc } from '../utils/trpc';
 import TablaHorarios from '../components/TablaHorarios';
-import { Filter, Search, RotateCcw, Calendar, Settings, Plus, LayoutGrid, Trash2, Award, AlertTriangle, X, ArrowLeftRight, FileSpreadsheet, Sparkles, Clock, Users, Check } from 'lucide-react';
+import { Filter, Search, Calendar, Settings, Plus, LayoutGrid, Trash2, Award, AlertTriangle, X, ArrowLeftRight, Sparkles, Clock, Users, Check, Building2, Layers, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import GestionHorarios from '../components/GestionHorarios';
 import ModalCrearHorario from '../components/ModalCrearHorario';
 import CalendarioHorarios from '../components/CalendarioHorarios';
 import { useAuth } from '../hooks/useAuth';
 import { SCHEDULE_BLOCKS, SCHEDULE_DAYS } from '../utils/scheduleConfig';
+import { getSemestresDinamicos } from '../utils/semestre';
 
 const getCicloRomano = (ciclo: number | null): string => {
   if (!ciclo) return '-';
@@ -22,31 +24,22 @@ const getSemestreByCiclo = (ciclo: number | null): string => {
   return ciclo % 2 === 1 ? `${currentYear}-I` : `${currentYear}-II`;
 };
 
-export const getSemestresDinamicos = (): string[] => {
-  const currentYear = new Date().getFullYear();
-  return [
-    `${currentYear - 1}-I`,
-    `${currentYear - 1}-II`,
-    `${currentYear}-I`,
-    `${currentYear}-II`,
-    `${currentYear + 1}-I`,
-    `${currentYear + 1}-II`,
-  ];
-};
-
 export const SEMESTRES = getSemestresDinamicos();
 
 const HorariosPage: React.FC = () => {
+  const router = useRouter();
   const { user } = useAuth();
   const horariosQuery = trpc.horarios.getAll.useQuery();
   const semestresQuery = trpc.semestres.getAll.useQuery();
+  const mallasQuery = trpc.cursos.getMallas.useQuery();
   const [semestre, setSemestre] = useState<string>('2026-I');
   const initializedSemestre = React.useRef(false);
   
   const docentesQuery = trpc.docentes.getDocentesConDisponibilidad.useQuery(
     { semestre: semestre || '2026-I' },
     {
-      refetchInterval: 3000, // Refrescar automáticamente cada 3 segundos en segundo plano
+      refetchInterval: 15_000,
+      refetchIntervalInBackground: false,
     }
   );
   const aulasQuery = trpc.aulas.getAll.useQuery();
@@ -55,15 +48,29 @@ const HorariosPage: React.FC = () => {
   const [aulaId, setAulaId] = useState<string>('');
   const [dia, setDia] = useState<string>('');
   const [ciclo, setCiclo] = useState<string>('');
+  const [departamento, setDepartamento] = useState<string>('');
   const [view, setView] = useState<'consulta' | 'gestion' | 'disponibilidades'>('consulta');
   const [consultaViewType, setConsultaViewType] = useState<'lista' | 'calendario'>('lista');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isMallaSelectorOpen, setIsMallaSelectorOpen] = useState(false);
+  const [selectedMallaId, setSelectedMallaId] = useState<number | null>(null);
   const [horarioToDelete, setHorarioToDelete] = useState<{ id: number, name: string } | null>(null);
   const [horarioToEdit, setHorarioToEdit] = useState<any>(null);
   const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
 
   const [scheduleScope, setScheduleScope] = useState<'mio' | 'general'>('general');
   const [swapProposal, setSwapProposal] = useState<{ id: number, courseName: string, teacherName: string, teacherAntiguedad: number } | null>(null);
+
+  React.useEffect(() => {
+    const requestedView = router.query.view;
+    if (
+      requestedView === 'consulta' ||
+      requestedView === 'gestion' ||
+      requestedView === 'disponibilidades'
+    ) {
+      setView(requestedView);
+    }
+  }, [router.query.view]);
 
   React.useEffect(() => {
     if (user?.rol === 'DOCENTE') {
@@ -129,6 +136,10 @@ const HorariosPage: React.FC = () => {
   const filteredHorarios = useMemo(() => {
     if (!horariosQuery.data) return [];
     return horariosQuery.data.filter((h: any) => {
+      // La carga no lectiva se registra en el módulo personal de cada docente.
+      if (h.tipoActividad === 'NO_LECTIVA') {
+        return false;
+      }
       // Filtrar por Mi Horario para rol DOCENTE
       if (user?.rol === 'DOCENTE' && scheduleScope === 'mio' && h.docenteId !== user.id) {
         return false;
@@ -142,15 +153,33 @@ const HorariosPage: React.FC = () => {
       const matchDia = !dia || h.dia === dia;
       const matchSemestre = !semestre || hSemestre === semestre;
       const matchCiclo = !ciclo || hCicloRom === ciclo;
+      const horarioDepartamento = h.curso?.malla?.departamento || h.curso?.departamentoResponsable || '';
+      const matchDepartamento = !departamento || horarioDepartamento === departamento;
 
-      return matchDocente && matchAula && matchDia && matchSemestre && matchCiclo;
+      return matchDocente && matchAula && matchDia && matchSemestre && matchCiclo && matchDepartamento;
     });
-  }, [horariosQuery.data, docenteId, aulaId, dia, semestre, ciclo, scheduleScope, user]);
+  }, [horariosQuery.data, docenteId, aulaId, dia, semestre, ciclo, departamento, scheduleScope, user]);
 
   const semestreOptions = useMemo(() => {
     const configured = semestresQuery.data?.map((item: any) => item.codigo) || [];
     return Array.from(new Set([...configured, ...SEMESTRES]));
   }, [semestresQuery.data]);
+
+  const departamentoOptions = useMemo(() => {
+    const departamentos = [
+      ...(mallasQuery.data || []).map((malla: any) => malla.departamento),
+      ...(horariosQuery.data || []).map((horario: any) => (
+        horario.curso?.malla?.departamento || horario.curso?.departamentoResponsable
+      )),
+    ].filter(Boolean);
+
+    return Array.from(new Set(departamentos)).sort((a, b) => String(a).localeCompare(String(b)));
+  }, [horariosQuery.data, mallasQuery.data]);
+
+  const selectedMalla = useMemo(
+    () => (mallasQuery.data || []).find((malla: any) => malla.id === selectedMallaId) || null,
+    [mallasQuery.data, selectedMallaId],
+  );
 
   const resetFilters = () => {
     setDocenteId('');
@@ -158,6 +187,7 @@ const HorariosPage: React.FC = () => {
     setDia('');
     setSemestre('');
     setCiclo('');
+    setDepartamento('');
   };
 
   return (
@@ -291,7 +321,7 @@ const HorariosPage: React.FC = () => {
               className="space-y-8"
             >
               {/* Filters Panel */}
-              <div className="glass p-6 rounded-3xl border border-gray-200 dark:border-white/5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 shadow-sm">
+              <div className="glass p-6 rounded-3xl border border-gray-200 dark:border-white/5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-6 shadow-sm">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
                     <Sparkles size={12} /> Semestre
@@ -304,6 +334,22 @@ const HorariosPage: React.FC = () => {
                     <option value="">Todos los semestres</option>
                     {semestreOptions.map((s) => (
                       <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                    <Building2 size={12} /> Departamento
+                  </label>
+                  <select
+                    value={departamento}
+                    onChange={(e) => setDepartamento(e.target.value)}
+                    className="w-full bg-white dark:bg-black/20 border-gray-200 dark:border-white/10"
+                  >
+                    <option value="">Todos los departamentos</option>
+                    {departamentoOptions.map((item) => (
+                      <option key={String(item)} value={String(item)}>{String(item)}</option>
                     ))}
                   </select>
                 </div>
@@ -348,7 +394,7 @@ const HorariosPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                  <label className="flex items-center gap-2 whitespace-nowrap text-xs font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                     <Filter size={12} /> Aula / Laboratorio
                   </label>
                   <select
@@ -391,7 +437,11 @@ const HorariosPage: React.FC = () => {
                   </span>
                   {isAdmin && (
                     <button
-                      onClick={() => setIsModalOpen(true)}
+                      onClick={() => {
+                        setHorarioToEdit(null);
+                        setSelectedMallaId(null);
+                        setIsMallaSelectorOpen(true);
+                      }}
                       className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-purple-600/20 hover:bg-purple-700 transition-all"
                     >
                       <Plus size={16} />
@@ -411,6 +461,7 @@ const HorariosPage: React.FC = () => {
                     isAdmin={isAdmin}
                     currentUser={user}
                     onEdit={(h) => {
+                      setSelectedMallaId(h.curso?.mallaId || null);
                       setHorarioToEdit(h);
                       setIsModalOpen(true);
                     }}
@@ -433,13 +484,112 @@ const HorariosPage: React.FC = () => {
           )}
         </AnimatePresence>
 
+        <AnimatePresence>
+          {isMallaSelectorOpen && (
+            <div className="fixed inset-0 z-[115] flex items-start justify-center overflow-y-auto bg-black/60 p-4 pb-12 pt-28 backdrop-blur-md">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 20 }}
+                className="w-full max-w-3xl overflow-hidden rounded-[2.5rem] border border-gray-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0f0f1a]"
+              >
+                <div className="flex items-start justify-between border-b border-gray-200 p-6 md:p-8 dark:border-white/10">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-purple-600 text-white shadow-lg shadow-purple-600/20">
+                      <Layers size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black text-gray-900 dark:text-white">
+                        ¿Con qué malla crearás el horario?
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Los cursos disponibles se limitarán a la malla y al departamento que elijas.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMallaSelectorOpen(false)}
+                    className="rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5 dark:hover:text-white"
+                    aria-label="Cerrar selector de malla"
+                  >
+                    <X size={22} />
+                  </button>
+                </div>
+
+                <div className="max-h-[58vh] space-y-3 overflow-y-auto p-6 md:p-8">
+                  {mallasQuery.isLoading ? (
+                    <div className="py-12 text-center">
+                      <div className="mx-auto mb-3 h-10 w-10 animate-spin rounded-full border-4 border-purple-600 border-t-transparent" />
+                      <p className="text-sm font-medium text-gray-500">Cargando mallas curriculares...</p>
+                    </div>
+                  ) : (mallasQuery.data || []).length === 0 ? (
+                    <div className="rounded-3xl border border-dashed border-gray-300 p-10 text-center dark:border-white/10">
+                      <Layers className="mx-auto mb-3 text-gray-300" size={36} />
+                      <h4 className="font-black text-gray-900 dark:text-white">Aún no existen mallas curriculares</h4>
+                      <p className="mt-1 text-sm text-gray-500">Crea una malla antes de registrar horarios.</p>
+                      <button
+                        type="button"
+                        onClick={() => router.push('/semestres')}
+                        className="mt-5 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700"
+                      >
+                        Ir a creación de mallas
+                      </button>
+                    </div>
+                  ) : (
+                    (mallasQuery.data || []).map((malla: any) => (
+                      <button
+                        key={malla.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedMallaId(malla.id);
+                          setDepartamento(malla.departamento);
+                          setIsMallaSelectorOpen(false);
+                          setIsModalOpen(true);
+                        }}
+                        className="group flex w-full items-center gap-4 rounded-2xl border border-gray-200 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-purple-400 hover:bg-purple-50/70 hover:shadow-lg dark:border-white/10 dark:hover:border-purple-500/50 dark:hover:bg-purple-500/10"
+                      >
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/15 dark:text-purple-300">
+                          <Layers size={20} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-black text-gray-900 dark:text-white">{malla.nombre}</span>
+                            {!malla.activo && (
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-gray-500 dark:bg-white/10">
+                                Histórica
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+                            <Building2 size={13} />
+                            {malla.departamento}
+                          </p>
+                          <p className="mt-1 text-xs font-bold text-purple-600 dark:text-purple-300">
+                            Vigencia {malla.anio}–{malla.anioFin} · {malla._count?.cursos || 0} cursos
+                          </p>
+                        </div>
+                        <ChevronRight className="shrink-0 text-gray-300 transition-transform group-hover:translate-x-1 group-hover:text-purple-600" size={22} />
+                      </button>
+                    ))
+                  )}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         <ModalCrearHorario
           isOpen={isModalOpen}
           horarioToEdit={horarioToEdit}
+          mallaId={selectedMallaId}
+          mallaNombre={selectedMalla?.nombre}
+          mallaDepartamento={selectedMalla?.departamento}
           defaultSemestre={semestre || '2026-I'}
           onClose={() => {
             setIsModalOpen(false);
             setHorarioToEdit(null);
+            setSelectedMallaId(null);
           }}
           onSuccess={() => {
             horariosQuery.refetch();
@@ -612,7 +762,7 @@ const DisponibilidadDocentesAdmin: React.FC<{ docentes: any[] }> = ({ docentes }
     try {
       const parsed = JSON.parse(selectedDocente.disponibilidad);
       return Array.isArray(parsed) ? parsed : [];
-    } catch (e) {
+    } catch {
       return [];
     }
   }, [selectedDocente]);
@@ -626,7 +776,7 @@ const DisponibilidadDocentesAdmin: React.FC<{ docentes: any[] }> = ({ docentes }
     try {
       const parsed = JSON.parse(disponibilidadStr);
       return Array.isArray(parsed) ? parsed.length : 0;
-    } catch (e) {
+    } catch {
       return 0;
     }
   };

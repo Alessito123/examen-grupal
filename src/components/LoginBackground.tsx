@@ -11,7 +11,7 @@ const ParticleField = ({ mousePos }: { mousePos: { x: number; y: number } }) => 
   const count = 800;
   const positions = useMemo(() => {
     const arr = new Float32Array(count * 3);
-    for (let i = 0; i < count * 3; i++) {
+    for (let i = 0; i < count; i++) {
       arr[i * 3] = (Math.random() - 0.5) * 12;
       arr[i * 3 + 1] = (Math.random() - 0.5) * 12;
       arr[i * 3 + 2] = (Math.random() - 0.5) * 12;
@@ -76,6 +76,13 @@ const CentralGeometry = () => {
 const LoginBackground: React.FC = () => {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isMobile, setIsMobile] = useState(false);
+  const [canvasReady, setCanvasReady] = useState(false);
+
+  const revealCanvas = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setCanvasReady(true));
+    });
+  };
 
   useEffect(() => {
     const handleResize = () => {
@@ -102,15 +109,27 @@ const LoginBackground: React.FC = () => {
     <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-gradient-to-br from-[#06060f] via-[#0d0722] to-[#040817] transition-all duration-1000">
       {/* Dynamic grid overlay */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800d_1px,transparent_1px),linear-gradient(to_bottom,#8080800d_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_80%,transparent_100%)] opacity-40" />
-      
+
+      <div className="absolute left-1/2 top-1/2 h-[34rem] w-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-purple-600/10 blur-[110px]" />
+
       {!isMobile && (
-        <Canvas camera={{ position: [0, 0, 5], fov: 75 }} className="w-full h-full">
-          <ambientLight intensity={0.7} />
-          <pointLight position={[10, 10, 10]} intensity={2.0} color="#a855f7" />
-          <pointLight position={[-10, -10, -10]} intensity={1.5} color="#3b82f6" />
-          <ParticleField mousePos={mousePos} />
-          <CentralGeometry />
-        </Canvas>
+        <div
+          className={`absolute inset-0 transition-[opacity,transform] duration-1000 ease-out motion-reduce:transition-none ${
+            canvasReady ? 'scale-100 opacity-100' : 'scale-[0.97] opacity-0'
+          }`}
+        >
+          <Canvas
+            camera={{ position: [0, 0, 5], fov: 75 }}
+            className="h-full w-full"
+            onCreated={revealCanvas}
+          >
+            <ambientLight intensity={0.7} />
+            <pointLight position={[10, 10, 10]} intensity={2.0} color="#a855f7" />
+            <pointLight position={[-10, -10, -10]} intensity={1.5} color="#3b82f6" />
+            <ParticleField mousePos={mousePos} />
+            <CentralGeometry />
+          </Canvas>
+        </div>
       )}
     </div>
   );

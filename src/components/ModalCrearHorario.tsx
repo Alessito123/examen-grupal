@@ -1,7 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { trpc } from '../utils/trpc';
-import { X, Calendar, Clock, User, Users, BookOpen, School, AlertTriangle, CheckCircle2, Briefcase, Calculator } from 'lucide-react';
+import { X, Calendar, Clock, User, Users, BookOpen, School, AlertTriangle, Calculator, Building2, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const getTimeInputDurationHours = (start: string, end: string) => {
+  const [startHour, startMinute] = start.split(':').map(Number);
+  const [endHour, endMinute] = end.split(':').map(Number);
+  if ([startHour, startMinute, endHour, endMinute].some(Number.isNaN)) return 0;
+  return ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60;
+};
+
+const getScheduleDurationHours = (start: string | Date, end: string | Date) => {
+  const duration = (new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60);
+  return Number.isFinite(duration) && duration > 0 ? duration : 0;
+};
+
+const formatHours = (hours: number) => (
+  Number.isInteger(hours) ? String(hours) : hours.toFixed(1).replace(/\.0$/, '')
+);
+
+const addHoursToTime = (time: string, hours: number) => {
+  const [hour, minute] = time.split(':').map(Number);
+  if ([hour, minute].some(Number.isNaN)) return '20:00';
+  const totalMinutes = Math.min(20 * 60, Math.max(7 * 60, (hour * 60 + minute) + Math.round(hours * 60)));
+  return `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`;
+};
 
 interface ModalCrearHorarioProps {
   isOpen: boolean;
@@ -9,9 +32,21 @@ interface ModalCrearHorarioProps {
   onSuccess: () => void;
   horarioToEdit?: any;
   defaultSemestre?: string;
+  mallaId?: number | null;
+  mallaNombre?: string;
+  mallaDepartamento?: string;
 }
 
-const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, onSuccess, horarioToEdit, defaultSemestre }) => {
+const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  horarioToEdit,
+  defaultSemestre,
+  mallaId,
+  mallaNombre,
+  mallaDepartamento,
+}) => {
   const [formData, setFormData] = useState({
     docenteId: '',
     cursoId: '',
@@ -21,9 +56,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     horaFin: '10:00',
     tipoCurso: 'teoria' as 'teoria' | 'laboratorio',
     grupo: '',
-    semestre: '2026-I',
-    tipoActividad: 'LECTIVA' as 'LECTIVA' | 'NO_LECTIVA',
-    actividadNoLectiva: ''
+    semestre: '',
   });
 
   const formatToTimeInput = (dateVal: string | Date) => {
@@ -34,16 +67,29 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     return `${hours}:${minutes}`;
   };
 
-  const docentes = trpc.docentes.getDocentesConDisponibilidad.useQuery({ semestre: formData.semestre });
+  const semestresActivos = trpc.semestres.getActivos.useQuery(undefined, { enabled: isOpen });
+  const docentes = trpc.docentes.getDocentesConDisponibilidad.useQuery(
+    { semestre: formData.semestre },
+    { enabled: isOpen && !!formData.semestre },
+  );
   const cursos = trpc.cursos.getAll.useQuery();
   const aulas = trpc.aulas.getAll.useQuery();
-  const horarios = trpc.horarios.getAll.useQuery(undefined, { enabled: isOpen && formData.tipoActividad === 'LECTIVA' });
+  const horarios = trpc.horarios.getAll.useQuery(undefined, { enabled: isOpen });
   const utils = trpc.useContext();
 
   const [conflictos, setConflictos] = useState<{ hasConflict: boolean; message: string } | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (horarioToEdit && isOpen) {
+    if (!isOpen || semestresActivos.isLoading) return;
+    setSubmitError(null);
+
+    const codigosActivos = (semestresActivos.data || []).map((semestre: any) => semestre.codigo);
+    const semestreActivoPreferido = codigosActivos.includes(defaultSemestre || '')
+      ? defaultSemestre
+      : codigosActivos[0] || '';
+
+    if (horarioToEdit) {
       setFormData({
         docenteId: String(horarioToEdit.docenteId),
         cursoId: horarioToEdit.cursoId ? String(horarioToEdit.cursoId) : '',
@@ -53,11 +99,9 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
         horaFin: formatToTimeInput(horarioToEdit.horaFin) || '10:00',
         tipoCurso: (horarioToEdit.tipoCurso as 'teoria' | 'laboratorio') || 'teoria',
         grupo: horarioToEdit.grupo || '',
-        semestre: horarioToEdit.semestre || defaultSemestre || '2026-I',
-        tipoActividad: horarioToEdit.tipoActividad || 'LECTIVA',
-        actividadNoLectiva: horarioToEdit.actividadNoLectiva || ''
+        semestre: horarioToEdit.semestre || semestreActivoPreferido || '',
       });
-    } else if (isOpen) {
+    } else {
       setFormData({
         docenteId: '',
         cursoId: '',
@@ -67,12 +111,10 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
         horaFin: '10:00',
         tipoCurso: 'teoria',
         grupo: '',
-        semestre: defaultSemestre || '2026-I',
-        tipoActividad: 'LECTIVA',
-        actividadNoLectiva: ''
+        semestre: semestreActivoPreferido || '',
       });
     }
-  }, [horarioToEdit, isOpen, defaultSemestre]);
+  }, [horarioToEdit, isOpen, defaultSemestre, mallaId, semestresActivos.data, semestresActivos.isLoading]);
 
   const validarQuery = trpc.horarios.validarConflicto.useQuery(
     {
@@ -85,14 +127,30 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
       cursoId: Number(formData.cursoId) || null,
       grupo: formData.grupo || null,
       semestre: formData.semestre,
-      tipoActividad: formData.tipoActividad
+      tipoActividad: 'LECTIVA',
+      tipoCurso: formData.tipoCurso,
     },
     {
-      enabled: !!formData.docenteId && isOpen,
+      enabled: Boolean(
+        isOpen
+        && formData.docenteId
+        && formData.aulaId
+        && formData.semestre
+        && formData.horaInicio
+        && formData.horaFin
+        && formData.horaInicio < formData.horaFin
+      ),
+      staleTime: 0,
+      retry: false,
+      refetchOnMount: 'always',
     }
   );
 
   useEffect(() => {
+    if (validarQuery.isFetching) {
+      setConflictos(null);
+      return;
+    }
     if (validarQuery.data) {
       if (validarQuery.data.hasConflict) {
         setConflictos({ 
@@ -100,12 +158,26 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
           message: validarQuery.data.message || '¡Conflicto detectado! El docente o el aula ya tienen una sesión en este horario.' 
         });
       } else {
-        setConflictos({ hasConflict: false, message: 'Horario disponible.' });
+        setConflictos(null);
       }
     } else {
       setConflictos(null);
     }
-  }, [validarQuery.data]);
+  }, [validarQuery.data, validarQuery.isFetching]);
+
+  useEffect(() => {
+    setSubmitError(null);
+  }, [
+    formData.aulaId,
+    formData.cursoId,
+    formData.dia,
+    formData.docenteId,
+    formData.grupo,
+    formData.horaFin,
+    formData.horaInicio,
+    formData.semestre,
+    formData.tipoCurso,
+  ]);
 
   const isDocenteDisponible = React.useMemo(() => {
     if (!formData.docenteId || !formData.dia || !formData.horaInicio || !formData.horaFin) return true;
@@ -127,7 +199,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
         if (!hasBlock) return false;
       }
       return true;
-    } catch (e) {
+    } catch {
       return true;
     }
   }, [docentes.data, formData.docenteId, formData.dia, formData.horaInicio, formData.horaFin]);
@@ -141,18 +213,39 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
       rawList = selectedDocente?.cursos || [];
     }
     
-    const isOddSem = formData.semestre.endsWith('I');
+    const isOddSem = formData.semestre.endsWith('-I');
     return rawList.filter((c: any) => {
       if (c.activo === false) return false;
+      if (mallaId && c.mallaId !== mallaId) return false;
       if (!c.ciclo) return true;
       return isOddSem ? c.ciclo % 2 === 1 : c.ciclo % 2 === 0;
     });
-  }, [formData.docenteId, formData.semestre, cursos.data, docentes.data]);
+  }, [formData.docenteId, formData.semestre, cursos.data, docentes.data, mallaId]);
 
   const selectedCurso = React.useMemo(() => {
     if (!formData.cursoId) return null;
     return (cursos.data || []).find((c: any) => c.id === Number(formData.cursoId)) || null;
   }, [cursos.data, formData.cursoId]);
+
+  const allowedSessionTypes = React.useMemo<Array<'teoria' | 'laboratorio'>>(() => {
+    if (!selectedCurso) return [];
+    if (selectedCurso.tipo === 'ambos') return ['teoria', 'laboratorio'];
+    return selectedCurso.tipo === 'laboratorio' ? ['laboratorio'] : ['teoria'];
+  }, [selectedCurso]);
+
+  const filteredAulas = React.useMemo(
+    () => (aulas.data || []).filter((aula: any) => aula.tipo === formData.tipoCurso),
+    [aulas.data, formData.tipoCurso],
+  );
+
+  useEffect(() => {
+    if (!selectedCurso || allowedSessionTypes.includes(formData.tipoCurso)) return;
+    setFormData((current) => ({
+      ...current,
+      tipoCurso: selectedCurso.tipo === 'laboratorio' ? 'laboratorio' : 'teoria',
+      aulaId: '',
+    }));
+  }, [allowedSessionTypes, formData.tipoCurso, selectedCurso]);
 
   const courseAssignmentSummary = React.useMemo(() => {
     const rows = (horarios.data || []).filter((h: any) =>
@@ -193,15 +286,77 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     };
   }, [formData.cursoId, formData.docenteId, formData.grupo, formData.semestre, formData.tipoCurso, horarioToEdit?.id, horarios.data, selectedCurso]);
 
+  const curricularHourValidation = React.useMemo(() => {
+    if (!selectedCurso || !formData.semestre) return null;
+
+    const maxHours = formData.tipoCurso === 'laboratorio'
+      ? Number(selectedCurso.horasLaboratorio || 0)
+      : Number(selectedCurso.horasTeoria || 0) + Number(selectedCurso.horasPractica || 0);
+    const normalizedGroup = formData.grupo || null;
+    const existingHours = (horarios.data || [])
+      .filter((horario: any) => (
+        horario.id !== horarioToEdit?.id
+        && horario.tipoActividad === 'LECTIVA'
+        && horario.cursoId === Number(formData.cursoId)
+        && horario.semestre === formData.semestre
+        && horario.tipoCurso === formData.tipoCurso
+        && (horario.grupo || null) === normalizedGroup
+      ))
+      .reduce(
+        (total: number, horario: any) => total + getScheduleDurationHours(horario.horaInicio, horario.horaFin),
+        0,
+      );
+    const blockHours = Math.max(0, getTimeInputDurationHours(formData.horaInicio, formData.horaFin));
+    const totalHours = existingHours + blockHours;
+    const remainingBeforeBlock = Math.max(0, maxHours - existingHours);
+    const sessionLabel = formData.tipoCurso === 'laboratorio' ? 'laboratorio' : 'teoría/práctica';
+    const exceeds = maxHours <= 0 || totalHours > maxHours + 0.0001;
+
+    return {
+      maxHours,
+      existingHours,
+      blockHours,
+      totalHours,
+      remainingBeforeBlock,
+      sessionLabel,
+      exceeds,
+      maxEndTime: addHoursToTime(formData.horaInicio, remainingBeforeBlock),
+    };
+  }, [
+    formData.cursoId,
+    formData.grupo,
+    formData.horaFin,
+    formData.horaInicio,
+    formData.semestre,
+    formData.tipoCurso,
+    horarioToEdit?.id,
+    horarios.data,
+    selectedCurso,
+  ]);
+
   useEffect(() => {
     if (formData.docenteId && formData.cursoId) {
       const selectedDocente = docentes.data?.find((d: any) => d.id === Number(formData.docenteId));
+      if (!selectedDocente?.cursos) return;
       const hasCourse = selectedDocente?.cursos?.some((c: any) => c.id === Number(formData.cursoId));
       if (!hasCourse) {
         setFormData(prev => ({ ...prev, cursoId: '' }));
       }
     }
-  }, [formData.docenteId, docentes.data]);
+  }, [formData.cursoId, formData.docenteId, docentes.data]);
+
+  useEffect(() => {
+    if (!formData.cursoId) return;
+    const courseIsAvailable = filteredCursos.some((curso: any) => curso.id === Number(formData.cursoId));
+    if (!courseIsAvailable) {
+      setFormData((current) => ({
+        ...current,
+        cursoId: '',
+        aulaId: '',
+        grupo: '',
+      }));
+    }
+  }, [filteredCursos, formData.cursoId]);
 
   const createMutation = trpc.horarios.create.useMutation({
     onSuccess: () => {
@@ -209,7 +364,8 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
       utils.horarios.getByDocenteAndSemestre.invalidate();
       onSuccess();
       onClose();
-    }
+    },
+    onError: (error) => setSubmitError(error.message),
   });
 
   const updateMutation = trpc.horarios.update.useMutation({
@@ -218,25 +374,27 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
       utils.horarios.getByDocenteAndSemestre.invalidate();
       onSuccess();
       onClose();
-    }
+    },
+    onError: (error) => setSubmitError(error.message),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (conflictos?.hasConflict) return;
+    if (conflictos?.hasConflict || curricularHourValidation?.exceeds) return;
+    setSubmitError(null);
 
     const payload = {
       docenteId: Number(formData.docenteId),
-      cursoId: formData.tipoActividad === 'LECTIVA' ? Number(formData.cursoId) : null,
-      aulaId: formData.tipoActividad === 'LECTIVA' ? Number(formData.aulaId) : null,
+      cursoId: Number(formData.cursoId),
+      aulaId: Number(formData.aulaId),
       dia: formData.dia as any,
       horaInicio: `1970-01-01T${formData.horaInicio}:00Z`,
       horaFin: `1970-01-01T${formData.horaFin}:00Z`,
-      tipoCurso: formData.tipoActividad === 'LECTIVA' ? formData.tipoCurso : null,
-      grupo: formData.tipoActividad === 'LECTIVA' ? (formData.grupo || null) : null,
+      tipoCurso: formData.tipoCurso,
+      grupo: formData.grupo || null,
       semestre: formData.semestre,
-      tipoActividad: formData.tipoActividad,
-      actividadNoLectiva: formData.tipoActividad === 'NO_LECTIVA' ? formData.actividadNoLectiva : null
+      tipoActividad: 'LECTIVA' as const,
+      actividadNoLectiva: null
     };
 
     if (horarioToEdit) {
@@ -249,7 +407,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || (!horarioToEdit && !mallaId)) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-32 pb-12 bg-black/60 backdrop-blur-sm overflow-y-auto">
@@ -270,6 +428,20 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
               <p className="text-sm text-muted-foreground dark:text-gray-400">
                 {horarioToEdit ? 'Modificación manual con validación en tiempo real.' : 'Creación manual con validación en tiempo real.'}
               </p>
+              {(mallaNombre || mallaDepartamento) && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-bold">
+                  {mallaNombre && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 px-2.5 py-1 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300">
+                      <Layers size={12} /> {mallaNombre}
+                    </span>
+                  )}
+                  {mallaDepartamento && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                      <Building2 size={12} /> {mallaDepartamento}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors text-muted-foreground">
@@ -278,37 +450,6 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-6">
-          {/* Tipo de Actividad Selector */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-              Tipo de Actividad
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, tipoActividad: 'LECTIVA' }))}
-                className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-3 font-bold ${
-                  formData.tipoActividad === 'LECTIVA' 
-                  ? 'border-purple-600 bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300' 
-                  : 'border-gray-100 bg-gray-50 text-gray-400 dark:bg-white/5 dark:border-white/5'
-                }`}
-              >
-                <BookOpen size={20} /> Lectiva
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, tipoActividad: 'NO_LECTIVA' }))}
-                className={`p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-3 font-bold ${
-                  formData.tipoActividad === 'NO_LECTIVA' 
-                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300' 
-                  : 'border-gray-100 bg-gray-50 text-gray-400 dark:bg-white/5 dark:border-white/5'
-                }`}
-              >
-                <Briefcase size={20} /> No Lectiva
-              </button>
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2 md:col-span-2">
               <label className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
@@ -318,14 +459,32 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
                 required
                 value={formData.semestre}
                 onChange={(e) => setFormData({...formData, semestre: e.target.value})}
+                disabled={semestresActivos.isLoading || (semestresActivos.data || []).length === 0}
                 className="w-full bg-white dark:bg-black/20 border-purple-500/20 text-purple-600 focus:border-purple-500"
               >
-                <option value="2026-I">2026-I (Ciclos Impares)</option>
-                <option value="2026-II">2026-II (Ciclos Pares)</option>
+                <option value="">
+                  {semestresActivos.isLoading
+                    ? 'Cargando semestres activos...'
+                    : 'Seleccionar semestre activo'}
+                </option>
+                {(semestresActivos.data || []).map((semestre: any) => (
+                  <option key={semestre.codigo} value={semestre.codigo}>
+                    {semestre.codigo}
+                    {semestre.tipoPeriodo === 'SEMESTRAL'
+                      ? ` (Ciclos ${semestre.ciclo === 'I' ? 'impares' : 'pares'})`
+                      : ''}
+                  </option>
+                ))}
               </select>
+              {!semestresActivos.isLoading && (semestresActivos.data || []).length === 0 && (
+                <p className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                  <AlertTriangle size={14} />
+                  No hay un semestre configurado como activo. Actívalo primero en Creación de semestre.
+                </p>
+              )}
             </div>
 
-            <div className={`space-y-2 ${formData.tipoActividad === 'NO_LECTIVA' ? 'md:col-span-2' : ''}`}>
+            <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                 <User size={12} /> Docente
               </label>
@@ -340,22 +499,66 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
               </select>
             </div>
 
-            {formData.tipoActividad === 'LECTIVA' ? (
-              <>
-                <div className="space-y-2">
+            <>
+              <div className="space-y-2">
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
                     <BookOpen size={12} /> Curso
                   </label>
                   <select 
                     required
                     value={formData.cursoId}
-                    onChange={(e) => setFormData({...formData, cursoId: e.target.value})}
+                    onChange={(e) => {
+                      const curso = (cursos.data || []).find((item: any) => item.id === Number(e.target.value));
+                      setFormData({
+                        ...formData,
+                        cursoId: e.target.value,
+                        tipoCurso: curso?.tipo === 'laboratorio' ? 'laboratorio' : 'teoria',
+                        aulaId: '',
+                      });
+                    }}
                     className="w-full"
                   >
                     <option value="">{formData.docenteId ? "Seleccionar Curso" : "Seleccione un docente primero"}</option>
                     {filteredCursos.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>
                 </div>
+
+                {selectedCurso && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tipo de sesión</label>
+                    <div className="flex flex-wrap gap-4 min-h-[42px] items-center">
+                      {allowedSessionTypes.includes('teoria') && (
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="tipo"
+                            checked={formData.tipoCurso === 'teoria'}
+                            onChange={() => setFormData({ ...formData, tipoCurso: 'teoria', aulaId: '' })}
+                            className="w-4 h-4 text-purple-600"
+                          />
+                          <span className="text-sm font-medium text-foreground dark:text-white">Teoría / práctica</span>
+                        </label>
+                      )}
+                      {allowedSessionTypes.includes('laboratorio') && (
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="tipo"
+                            checked={formData.tipoCurso === 'laboratorio'}
+                            onChange={() => setFormData({ ...formData, tipoCurso: 'laboratorio', aulaId: '' })}
+                            className="w-4 h-4 text-purple-600"
+                          />
+                          <span className="text-sm font-medium text-foreground dark:text-white">Laboratorio</span>
+                        </label>
+                      )}
+                    </div>
+                    {selectedCurso.tipo === 'ambos' && (
+                      <p className="text-xs text-purple-600 dark:text-purple-300">
+                        Registra por separado el bloque de teoría/práctica y el bloque de laboratorio.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
@@ -364,18 +567,15 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
                   <select 
                     required
                     value={formData.aulaId}
-                    onChange={(e) => {
-                      const selectedAula = aulas.data?.find(a => a.id === Number(e.target.value));
-                      setFormData({
-                        ...formData,
-                        aulaId: e.target.value,
-                        tipoCurso: selectedAula ? (selectedAula.tipo as 'teoria' | 'laboratorio') : formData.tipoCurso
-                      });
-                    }}
+                    onChange={(e) => setFormData({ ...formData, aulaId: e.target.value })}
                     className="w-full"
                   >
                     <option value="">Seleccionar Ambiente</option>
-                    {aulas.data?.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.tipo})</option>)}
+                    {filteredAulas.map((aula: any) => (
+                      <option key={aula.id} value={aula.id}>
+                        {aula.nombre} ({aula.tipo === 'laboratorio' ? 'Laboratorio' : 'Aula'})
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -440,32 +640,8 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
                       </div>
                     </div>
                   </div>
-                )}
-              </>
-            ) : (
-              <div className="space-y-2 md:col-span-2">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                  <Briefcase size={12} /> Actividad No Lectiva
-                </label>
-                <select 
-                  required
-                  value={formData.actividadNoLectiva}
-                  onChange={(e) => setFormData({...formData, actividadNoLectiva: e.target.value})}
-                  className="w-full"
-                >
-                  <option value="">Seleccionar Rubro...</option>
-                  <option value="Preparación y Evaluación">Preparación y Evaluación</option>
-                  <option value="Consejería y Tutoría">Consejería y Tutoría</option>
-                  <option value="Investigación">Investigación</option>
-                  <option value="Capacitación">Capacitación</option>
-                  <option value="Actividades de Gobierno">Actividades de Gobierno</option>
-                  <option value="Actividades de Administración">Actividades de Administración</option>
-                  <option value="Asesoría de Tesis">Asesoría de Tesis</option>
-                  <option value="Responsabilidad Social">Responsabilidad Social</option>
-                  <option value="Comités Técnicos y Comisiones">Comités Técnicos y Comisiones</option>
-                </select>
-              </div>
-            )}
+              )}
+            </>
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
@@ -492,7 +668,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
               <input 
                 type="time" 
                 min="07:00"
-                max="20:00"
+                max={curricularHourValidation?.maxEndTime || '20:00'}
                 required
                 value={formData.horaInicio}
                 onChange={(e) => setFormData({...formData, horaInicio: e.target.value})}
@@ -520,39 +696,49 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
                 * Los horarios deben estar entre 07:00 y 20:00. La hora de inicio debe ser anterior a la hora de fin.
               </p>
             )}
-          </div>
 
-          {formData.tipoActividad === 'LECTIVA' && (
-            <div className="flex items-center gap-4">
-              <div className="flex-1 space-y-2">
-                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tipo de Sesión</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="tipo" checked={formData.tipoCurso === 'teoria'} onChange={() => setFormData({...formData, tipoCurso: 'teoria'})} className="w-4 h-4 text-purple-600" />
-                    <span className="text-sm font-medium text-foreground dark:text-white">Teoría</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="tipo" checked={formData.tipoCurso === 'laboratorio'} onChange={() => setFormData({...formData, tipoCurso: 'laboratorio'})} className="w-4 h-4 text-purple-600" />
-                    <span className="text-sm font-medium text-foreground dark:text-white">Laboratorio</span>
-                  </label>
+            {curricularHourValidation?.exceeds && formData.horaInicio < formData.horaFin && (
+              <div className="md:col-span-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-600 dark:text-red-400">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 shrink-0" size={20} />
+                  <div>
+                    <p className="text-sm font-black">
+                      Límite de {curricularHourValidation.sessionLabel}: {formatHours(curricularHourValidation.maxHours)} H
+                    </p>
+                    <p className="mt-1 text-xs font-semibold">
+                      Ya registradas para {formData.grupo || 'sección U'}: {formatHours(curricularHourValidation.existingHours)} H
+                      {' · '}Bloque actual: {formatHours(curricularHourValidation.blockHours)} H
+                      {' · '}Total: {formatHours(curricularHourValidation.totalHours)} H
+                    </p>
+                    <p className="mt-1 text-xs font-bold">
+                      Este bloque supera las horas definidas en la malla. Como máximo puede terminar a las {curricularHourValidation.maxEndTime}.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Validation Feedback */}
           <AnimatePresence>
-            {conflictos && (
+            {submitError && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
-                className={`p-4 rounded-2xl flex items-center gap-3 border ${
-                  conflictos.hasConflict 
-                    ? 'bg-red-500/10 border-red-500/20 text-red-600' 
-                    : 'bg-green-500/10 border-green-500/20 text-green-600'
-                }`}
+                className="p-4 rounded-2xl flex items-center gap-3 border bg-red-500/10 border-red-500/20 text-red-600"
               >
-                {conflictos.hasConflict ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}
+                <AlertTriangle size={20} />
+                <span className="text-sm font-bold">{submitError}</span>
+              </motion.div>
+            )}
+            {conflictos?.hasConflict && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="p-4 rounded-2xl flex items-center gap-3 border bg-red-500/10 border-red-500/20 text-red-600"
+              >
+                <AlertTriangle size={20} />
                 <span className="text-sm font-bold">{conflictos.message}</span>
               </motion.div>
             )}
@@ -581,7 +767,7 @@ const ModalCrearHorario: React.FC<ModalCrearHorarioProps> = ({ isOpen, onClose, 
             </button>
             <button 
               type="submit"
-              disabled={createMutation.isPending || updateMutation.isPending || conflictos?.hasConflict || !(formData.horaInicio >= '07:00' && formData.horaInicio <= '20:00' && formData.horaFin >= '07:00' && formData.horaFin <= '20:00' && formData.horaInicio < formData.horaFin)}
+              disabled={createMutation.isPending || updateMutation.isPending || validarQuery.isFetching || !formData.semestre || conflictos?.hasConflict || curricularHourValidation?.exceeds || !(formData.horaInicio >= '07:00' && formData.horaInicio <= '20:00' && formData.horaFin >= '07:00' && formData.horaFin <= '20:00' && formData.horaInicio < formData.horaFin)}
               className="flex-[2] py-4 rounded-2xl bg-purple-600 text-white font-bold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-600/20 transition-all"
             >
               {horarioToEdit 

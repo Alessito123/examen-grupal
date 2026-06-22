@@ -42,9 +42,25 @@ export const router = t.router;
 export const publicProcedure = t.procedure;
 export const middleware = t.middleware;
 
+export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+  if (!ctx.user) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: 'Debes iniciar sesión para acceder a este recurso',
+    });
+  }
+
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user,
+    },
+  });
+});
+
 // Procedimiento protegido para administradores
-export const adminProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.user || ctx.user.rol !== 'ADMIN') {
+export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.rol !== 'ADMIN') {
     throw new TRPCError({
       code: 'FORBIDDEN',
       message: 'Se requieren permisos de administrador',

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Search, Plus, Mail, Clock, Shield, Award, RotateCcw, Trash2, AlertTriangle, X, Pencil, BookOpen } from 'lucide-react';
+import { Users, Search, Plus, Mail, Shield, Award, RotateCcw, Trash2, AlertTriangle, X, Pencil } from 'lucide-react';
 import DashboardLayout from '../layouts/DashboardLayout';
 import { useFetchDocentes } from '../hooks/useFetchDocentes';
 import ModalNuevoDocente from '../components/ModalNuevoDocente';
@@ -61,8 +61,16 @@ const DocentesPage: React.FC = () => {
       case 'asociado': return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
       case 'auxiliar': return 'bg-green-500/10 text-green-600 dark:text-green-400';
       case 'jefe_practica': return 'bg-orange-500/10 text-orange-600 dark:text-orange-400';
-      case 'profesor': return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400';
-      case 'alumno': return 'bg-pink-500/10 text-pink-600 dark:text-pink-400';
+      case 'tipo_a1':
+      case 'tipo_a2':
+      case 'tipo_a3': return 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400';
+      case 'tipo_b1':
+      case 'tipo_b2':
+      case 'tipo_b3': return 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-400';
+      case 'emerito':
+      case 'experto':
+      case 'invitado_especial':
+      case 'cesante': return 'bg-amber-500/10 text-amber-700 dark:text-amber-400';
       default: return 'bg-gray-500/10 text-gray-600 dark:text-gray-400';
     }
   };
@@ -73,8 +81,16 @@ const DocentesPage: React.FC = () => {
       asociado: 'Asociado',
       auxiliar: 'Auxiliar',
       jefe_practica: 'Jefe de Práctica',
-      profesor: 'Profesor',
-      alumno: 'Alumno'
+      tipo_a1: 'Tipo A1',
+      tipo_a2: 'Tipo A2',
+      tipo_a3: 'Tipo A3',
+      tipo_b1: 'Tipo B1',
+      tipo_b2: 'Tipo B2',
+      tipo_b3: 'Tipo B3',
+      cesante: 'Cesante',
+      experto: 'Experto',
+      emerito: 'Emerito',
+      invitado_especial: 'Invitado especial',
     };
     return labels[d.categoria.toLowerCase()] || d.categoria;
   };
@@ -82,7 +98,8 @@ const DocentesPage: React.FC = () => {
   const getDedicacionLabel = (dedicacion: string) => {
     const labels: Record<string, string> = {
       DE_EXCLUSIVA: 'Dedicación Exclusiva',
-      TP: 'Tiempo Parcial',
+      DOCENTE_INVESTIGADOR: 'Docente Investigador (DI)',
+      TP_4H: 'Tiempo Parcial 4H',
       TP_8H: 'Tiempo Parcial 8H',
       TP_10H: 'Tiempo Parcial 10H',
       TP_12H: 'Tiempo Parcial 12H',
@@ -156,8 +173,12 @@ const DocentesPage: React.FC = () => {
               <option value="asociado">Asociado</option>
               <option value="auxiliar">Auxiliar</option>
               <option value="jefe_practica">Jefe de Práctica</option>
-              <option value="profesor">Profesor</option>
-              <option value="alumno">Alumno</option>
+              <option value="tipo_a1">Tipo A1</option>
+              <option value="tipo_b1">Tipo B1</option>
+              <option value="tipo_a2">Tipo A2</option>
+              <option value="tipo_b2">Tipo B2</option>
+              <option value="tipo_a3">Tipo A3</option>
+              <option value="tipo_b3">Tipo B3</option>
             </select>
             <button 
               onClick={() => { setSearchTerm(''); setFilterCategoria(''); }}
@@ -192,7 +213,7 @@ const DocentesPage: React.FC = () => {
                   <tr className="bg-gray-100/50 dark:bg-white/[0.03]">
                     <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest first:rounded-tl-3xl">IBM / Docente</th>
                     <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Condición / Categoría</th>
-                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Dedicación</th>
+                    <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Regimen</th>
                     <th className="p-4 text-center text-xs font-bold text-gray-500 uppercase tracking-widest">Antigüedad</th>
                     <th className="p-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Rol</th>
                     <th className="p-4 text-right text-xs font-bold text-gray-500 uppercase tracking-widest last:rounded-tr-3xl">Acciones</th>
@@ -234,11 +255,11 @@ const DocentesPage: React.FC = () => {
                         <td className="p-4">
                           <div className="flex flex-col gap-1.5">
                             <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold w-fit uppercase tracking-wider border ${
-                              d.condicion === 'NOMBRADO' 
+                              d.condicion === 'ORDINARIO'
                                 ? 'bg-emerald-500/5 text-emerald-600 border-emerald-500/20' 
                                 : 'bg-amber-500/5 text-amber-600 border-amber-500/20'
                             }`}>
-                              {d.condicion}
+                              {d.condicion === 'ORDINARIO' ? 'Ordinario' : d.condicion === 'EXTRAORDINARIO' ? 'Extraordinario' : 'Contratado'}
                             </span>
                             <span className={`px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1.5 w-fit uppercase tracking-tighter ${getCategoryColor(d.categoria)}`}>
                               <Award size={14} />
@@ -260,7 +281,7 @@ const DocentesPage: React.FC = () => {
                                 style={{ width: `${Math.min((d.antiguedad || 0) * 5, 100)}%` }} 
                                 />
                             </div>
-                            {d.condicion === 'NOMBRADO' && d.fechaNombramiento && (
+                            {d.condicion === 'ORDINARIO' && d.fechaNombramiento && (
                               <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Nombr.: {(() => {
                                 const date = new Date(d.fechaNombramiento);
                                 return `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${date.getUTCFullYear()}`;

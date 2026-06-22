@@ -1,26 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Clock, Calendar, Check, Save, RotateCcw, AlertCircle, Info, Sparkles } from 'lucide-react';
+import { Clock, Calendar, Check, RotateCcw, AlertCircle, Info, Sparkles } from 'lucide-react';
 import DashboardLayout from '../layouts/DashboardLayout';
 import { useAuth } from '../hooks/useAuth';
 import { trpc } from '../utils/trpc';
 import { SCHEDULE_BLOCKS, SCHEDULE_DAYS } from '../utils/scheduleConfig';
+import { getSemestresDinamicos } from '../utils/semestre';
 
 const DIAS: readonly string[] = SCHEDULE_DAYS;
 const BLOQUES = SCHEDULE_BLOCKS;
-
-const getSemestresDinamicos = (): string[] => {
-  const currentYear = new Date().getFullYear();
-  return [
-    `${currentYear - 1}-I`,
-    `${currentYear - 1}-II`,
-    `${currentYear}-I`,
-    `${currentYear}-II`,
-    `${currentYear + 1}-I`,
-    `${currentYear + 1}-II`,
-  ];
-};
 
 const SEMESTRES = getSemestresDinamicos();
 
@@ -93,7 +82,7 @@ const DisponibilidadPage: React.FC = () => {
           if (Array.isArray(parsed)) {
             setSelectedSlots(parsed);
           }
-        } catch (e) {
+        } catch {
           setSelectedSlots([]);
         }
       } else {
